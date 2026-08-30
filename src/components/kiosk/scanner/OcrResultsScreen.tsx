@@ -14,14 +14,76 @@ import {
   Activity,
   Edit3,
   Check,
-  Zap
+  Zap,
+  Plus,
+  Trash2
 } from 'lucide-react';
+
+interface ExtractedMedication {
+  id: string;
+  name: string;
+  dosage: string;
+  frequency: string;
+  confidence: number;
+  type: 'allopathic' | 'ayurvedic';
+}
 
 export const OcrResultsScreen: React.FC = () => {
   const navigate = useNavigate();
 
   const [selectedDiscrepancyResolution, setSelectedDiscrepancyResolution] = useState<'voice' | 'ocr'>('ocr');
   const [confirmed, setConfirmed] = useState<boolean>(false);
+
+  const [medications, setMedications] = useState<ExtractedMedication[]>([
+    {
+      id: 'med-1',
+      name: 'Tab. Pantoprazole 40mg',
+      dosage: '40mg',
+      frequency: '1-0-0 (Before Meals) • 14 Days',
+      confidence: 98,
+      type: 'allopathic'
+    },
+    {
+      id: 'med-2',
+      name: 'Avipattikar Churna 3g',
+      dosage: '3g',
+      frequency: '1-0-1 (After Meals with lukewarm water)',
+      confidence: 95,
+      type: 'ayurvedic'
+    },
+    {
+      id: 'med-3',
+      name: 'Sutshekhar Ras (Gold Enriched)',
+      dosage: '125mg',
+      frequency: '0-0-1 (At Bedtime)',
+      confidence: 92,
+      type: 'ayurvedic'
+    }
+  ]);
+
+  const [newMedName, setNewMedName] = useState<string>('');
+  const [newMedFreq, setNewMedFreq] = useState<string>('');
+
+  const handleAddMedication = () => {
+    if (!newMedName.trim()) return;
+    setMedications((prev) => [
+      ...prev,
+      {
+        id: `med-${Date.now()}`,
+        name: newMedName.trim(),
+        dosage: 'Standard',
+        frequency: newMedFreq.trim() || '1-0-1 (After Meals)',
+        confidence: 99,
+        type: 'allopathic'
+      }
+    ]);
+    setNewMedName('');
+    setNewMedFreq('');
+  };
+
+  const handleRemoveMedication = (id: string) => {
+    setMedications((prev) => prev.filter((m) => m.id !== id));
+  };
 
   const handleConfirmAndProceed = () => {
     setConfirmed(true);
@@ -87,34 +149,70 @@ export const OcrResultsScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Extracted Drug Entities List */}
+        {/* Extracted Drug Entities List & Interactive Editor */}
         <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-xl space-y-4">
-          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Pill className="w-5 h-5 text-teal-600" />
-            <T text="Extracted Medications from Prescription OCR" />
-          </h3>
+          
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Pill className="w-5 h-5 text-teal-600" />
+              <T text="Extracted Medications from Prescription OCR" />
+            </h3>
+            <span className="text-xs text-slate-500 font-medium">
+              {medications.length} <T text="Items Verified" />
+            </span>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
-              <div className="flex items-center justify-between font-bold text-slate-900">
-                <span><T text="Tab. Pantoprazole 40mg" /></span>
-                <span className="text-[10px] font-mono bg-teal-100 text-teal-800 px-2 py-0.5 rounded font-bold">
-                  98% Conf
-                </span>
-              </div>
-              <div className="text-slate-500"><T text="Frequency: 1-0-0 (Before Meals) • Duration: 14 Days" /></div>
-            </div>
+            {medications.map((med) => (
+              <div key={med.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-slate-900">
+                    <span>{med.name}</span>
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                      med.type === 'ayurvedic' ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-teal-100 text-teal-900 border border-teal-200'
+                    }`}>
+                      {med.confidence}% Conf
+                    </span>
+                  </div>
+                  <div className="text-slate-500 text-[11px]">{med.frequency}</div>
+                </div>
 
-            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
-              <div className="flex items-center justify-between font-bold text-slate-900">
-                <span><T text="Avipattikar Churna 3g" /></span>
-                <span className="text-[10px] font-mono bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">
-                  95% Conf
-                </span>
+                <button
+                  onClick={() => handleRemoveMedication(med.id)}
+                  className="p-1.5 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                  title="Delete Item"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
-              <div className="text-slate-500"><T text="Frequency: 1-0-1 (After Meals with warm water)" /></div>
-            </div>
+            ))}
           </div>
+
+          {/* Add New Medication Row */}
+          <div className="p-3.5 bg-teal-50/60 rounded-2xl border border-teal-200 flex flex-col sm:flex-row items-center gap-2 pt-3">
+            <input
+              type="text"
+              placeholder="Add medication name (e.g. Tab. Amoxicillin 500mg)..."
+              value={newMedName}
+              onChange={(e) => setNewMedName(e.target.value)}
+              className="w-full sm:flex-1 px-3 py-2 bg-white rounded-xl border border-teal-300 text-xs font-medium text-slate-900 outline-none"
+            />
+            <input
+              type="text"
+              placeholder="Frequency (e.g. 1-0-1 After Meals)..."
+              value={newMedFreq}
+              onChange={(e) => setNewMedFreq(e.target.value)}
+              className="w-full sm:flex-1 px-3 py-2 bg-white rounded-xl border border-teal-300 text-xs font-medium text-slate-900 outline-none"
+            />
+            <button
+              onClick={handleAddMedication}
+              className="w-full sm:w-auto px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span><T text="Add Medication" /></span>
+            </button>
+          </div>
+
         </div>
 
         {/* Cross-Discipline Interaction Safety Matrix */}

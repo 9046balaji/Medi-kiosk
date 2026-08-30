@@ -100,13 +100,13 @@ export interface PatientQueueItem {
   name: string;
   age: number;
   gender: string;
-  complaint: string;
+  complaint?: string;
   priority: 'P1' | 'P2' | 'P3';
-  mode: ClinicalMode;
-  kiosk: string;
-  waitTime: string;
-  redFlag: string | null;
-  status: 'waiting' | 'in_progress' | 'completed';
+  mode?: ClinicalMode;
+  kiosk?: string;
+  waitTime?: string;
+  redFlag?: string | null;
+  status?: 'waiting' | 'in_progress' | 'completed';
 }
 
 export interface MediKioskState {
@@ -159,6 +159,9 @@ export interface MediKioskState {
   // Actions
   setLanguage: (lang: Language) => void;
   setMode: (mode: ClinicalMode) => void;
+  setPatientName: (name: string) => void;
+  setOpdToken: (token: string) => void;
+  addPatientToQueue: (patient: PatientQueueItem) => void;
   setAbhaVerified: (verified: boolean, returning?: boolean) => void;
   setAnonymousToken: () => void;
   updateSocratesStep: (step: SocratesStep, qIndex?: number) => void;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMediKiosk } from '../../../context/MediKioskContext';
 import { T } from '../../../context/TranslationContext';
@@ -12,21 +12,73 @@ import {
   Upload,
   RefreshCw,
   Sparkles,
-  FileSearch
+  FileSearch,
+  Video,
+  VideoOff
 } from 'lucide-react';
 
 export const DocScannerScreen: React.FC = () => {
   const navigate = useNavigate();
+  const state = useMediKiosk();
+
   const [docType, setDocType] = useState<'prescription' | 'lab_report' | 'discharge'>('prescription');
   const [isScanning, setIsScanning] = useState<boolean>(false);
-  const [scanComplete, setScanComplete] = useState<boolean>(false);
+  const [scannedImage, setScannedImage] = useState<string | null>(null);
+  const [isWebcamActive, setIsWebcamActive] = useState<boolean>(false);
 
-  const handleSimulateScan = () => {
-    setIsScanning(true);
-    setTimeout(() => {
-      setIsScanning(false);
-      setScanComplete(true);
-    }, 1500);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // File Upload Handler
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setScannedImage(event.target?.result as string);
+        setIsScanning(true);
+        setTimeout(() => setIsScanning(false), 1200);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Live Webcam Handler
+  const startWebcam = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setIsWebcamActive(true);
+    } catch (err) {
+      console.warn('Webcam permission denied:', err);
+    }
+  };
+
+  const captureWebcamFrame = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg');
+      setScannedImage(dataUrl);
+
+      // Stop video tracks
+      const stream = video.srcObject as MediaStream;
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+      setIsWebcamActive(false);
+      setIsScanning(true);
+      setTimeout(() => setIsScanning(false), 1200);
+    }
   };
 
   return (
@@ -53,7 +105,7 @@ export const DocScannerScreen: React.FC = () => {
             <T text="Scan Physical Paper Prescriptions & Lab Reports" />
           </h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            <T text="Place paper document on scanner bed below for instant OCR extraction." />
+            <T text="Upload an image file or use live camera capture below for instant OCR extraction." />
           </p>
         </div>
 
@@ -95,48 +147,92 @@ export const DocScannerScreen: React.FC = () => {
 
         {/* Scanner Viewport */}
         <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-xl space-y-6">
+          
           <div className="relative aspect-video max-w-2xl mx-auto bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-800 flex items-center justify-center p-4">
             
-            <img
-              src="https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=800&auto=format&fit=crop&q=80"
-              alt="Scanned prescription document"
-              className="w-full h-full object-cover opacity-70 filter contrast-125"
-            />
-
-            {/* Laser Beam */}
-            {isScanning && (
-              <div className="absolute inset-x-0 h-1.5 bg-gradient-to-r from-transparent via-teal-400 to-transparent animate-scan-laser shadow-[0_0_15px_#14B8A6]" />
+            {/* Live Video Feed if Webcam active */}
+            {isWebcamActive ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover rounded-xl"
+              />
+            ) : scannedImage ? (
+              <img
+                src={scannedImage}
+                alt="Scanned Document"
+                className="w-full h-full object-contain rounded-xl"
+              />
+            ) : (
+              <img
+                src="https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80"
+                alt="Sample Prescription Document"
+                className="w-full h-full object-cover rounded-xl opacity-60"
+              />
             )}
 
-            {scanComplete && (
-              <div className="absolute inset-0 bg-emerald-950/80 backdrop-blur-xs flex items-center justify-center">
-                <div className="text-center space-y-2">
-                  <CheckCircle2 className="w-16 h-16 text-emerald-400 mx-auto animate-bounce" />
-                  <div className="text-base font-bold text-white"><T text="Document Scanned Successfully!" /></div>
-                  <div className="text-xs text-emerald-300 font-mono">3 Medicines & 2 Lab Tests Detected</div>
-                </div>
+            {/* Laser Scanning Animation Overlay */}
+            {isScanning && (
+              <div className="absolute inset-0 bg-teal-500/10 backdrop-blur-xs flex items-center justify-center">
+                <div className="w-full h-1 bg-teal-400 shadow-[0_0_15px_#2dd4bf] animate-bounce" />
+                <span className="absolute bg-teal-950 text-teal-300 px-4 py-2 rounded-xl text-xs font-mono font-bold border border-teal-800">
+                  <T text="OCR Entity Extraction in Progress..." />
+                </span>
               </div>
             )}
+
+            <canvas ref={canvasRef} className="hidden" />
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
-            <button
-              onClick={handleSimulateScan}
-              disabled={isScanning}
-              className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 text-white font-black text-sm rounded-2xl transition-all shadow-lg shadow-teal-700/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <Camera className="w-5 h-5" />
-              <span>{isScanning ? <T text="Scanning Lens Active..." /> : <T text="Simulate Document Capture" />}</span>
-            </button>
+          {/* Real Input Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
 
             <button
-              onClick={() => navigate('/scan/results')}
-              className="w-full sm:w-auto px-8 py-3.5 bg-slate-900 hover:bg-slate-800 text-teal-300 font-black text-sm rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full sm:w-auto px-6 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-2xl transition-all border border-slate-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
             >
-              <span><T text="Review Extracted OCR Entities" /></span>
-              <ArrowRight className="w-4 h-4 text-teal-400" />
+              <Upload className="w-4 h-4 text-teal-600" />
+              <span><T text="Upload Image File" /></span>
             </button>
+
+            {isWebcamActive ? (
+              <button
+                onClick={captureWebcamFrame}
+                className="w-full sm:w-auto px-6 py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                <Camera className="w-4 h-4" />
+                <span><T text="Snap Photo Frame" /></span>
+              </button>
+            ) : (
+              <button
+                onClick={startWebcam}
+                className="w-full sm:w-auto px-6 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-2xl transition-all border border-slate-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Video className="w-4 h-4 text-teal-600" />
+                <span><T text="Open Live Webcam Camera" /></span>
+              </button>
+            )}
+
+            <button
+              onClick={() => navigate('/scan/ocr')}
+              className="w-full sm:w-auto px-8 py-3.5 bg-teal-600 hover:bg-teal-700 text-white font-black text-xs rounded-2xl transition-all shadow-md shadow-teal-600/30 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span><T text="View Extracted OCR Results" /></span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
           </div>
+
         </div>
 
       </div>

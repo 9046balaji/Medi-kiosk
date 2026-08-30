@@ -4,6 +4,7 @@ import { useMediKiosk } from '../../context/MediKioskContext';
 import { useTranslation, T } from '../../context/TranslationContext';
 import { ALL_SUPPORTED_LANGUAGES } from '../../lib/languageMap';
 import { Language } from '../../types';
+import { speakText, stopSpeech } from '../../lib/speechUtils';
 import {
   Globe,
   PhoneCall,
@@ -39,6 +40,24 @@ export const KioskHeader: React.FC = () => {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleLanguageChange = (newLang: Language) => {
+    setLanguage(newLang);
+    const langObj = ALL_SUPPORTED_LANGUAGES.find((l) => l.id === newLang);
+    if (soundEnabled && langObj) {
+      speakText(`Language changed to ${langObj.label}`, newLang);
+    }
+  };
+
+  const handleToggleSound = () => {
+    if (soundEnabled) {
+      stopSpeech();
+      setSoundEnabled(false);
+    } else {
+      setSoundEnabled(true);
+      speakText('Audio guidance enabled', language);
+    }
+  };
 
   const languages = ALL_SUPPORTED_LANGUAGES;
 
@@ -85,7 +104,7 @@ export const KioskHeader: React.FC = () => {
               <Globe className="w-4 h-4 text-teal-600 ml-1.5 mr-1" />
               <select
                 value={language}
-                onChange={(e) => setLanguage(e.target.value as Language)}
+                onChange={(e) => handleLanguageChange(e.target.value as Language)}
                 className="text-xs sm:text-sm font-bold text-slate-900 bg-transparent py-0.5 pr-2 outline-none cursor-pointer"
               >
                 {languages.map((l) => (
@@ -99,62 +118,54 @@ export const KioskHeader: React.FC = () => {
               </span>
             </div>
 
-            {/* Audio Toggle */}
+            {/* Speech Audio Guidance Toggle Button */}
             <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              title={soundEnabled ? 'Mute voice instructions' : 'Enable voice instructions'}
-              className={`p-2 rounded-xl border transition-all cursor-pointer ${
+              onClick={handleToggleSound}
+              title="Toggle Audio Instructions"
+              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center ${
                 soundEnabled
-                  ? 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100'
-                  : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200'
+                  ? 'bg-teal-50 border-teal-300 text-teal-700 shadow-xs'
+                  : 'bg-slate-100 border-slate-200 text-slate-400'
               }`}
             >
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
 
-            {/* Emergency SOS Button */}
+            {/* Emergency Casualty SOS Red Button */}
             <button
-              onClick={() => setShowSosModal(true)}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md shadow-red-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              onClick={() => {
+                setShowSosModal(true);
+                if (soundEnabled) {
+                  speakText('Emergency SOS triggered. Triage nurse and casualty team notified.', language);
+                }
+              }}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/30 flex items-center gap-1.5 cursor-pointer animate-pulse"
             >
               <AlertOctagon className="w-4 h-4" />
-              <span><T text="SOS Emergency" /></span>
+              <span className="hidden sm:inline"><T text="Emergency SOS" /></span>
             </button>
+
           </div>
+
         </div>
       </header>
 
-      {/* SOS Emergency Trigger Modal */}
+      {/* SOS Modal */}
       {showSosModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full border-4 border-red-500 shadow-2xl space-y-6 text-center animate-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl mx-auto flex items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border-2 border-red-500 shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-red-100 text-red-600 border-2 border-red-300 mx-auto flex items-center justify-center font-bold">
               <PhoneCall className="w-8 h-8 animate-bounce" />
             </div>
-
-            <div className="space-y-2">
-              <span className="px-3 py-1 bg-red-100 text-red-800 font-bold text-xs rounded-full uppercase tracking-wider">
-                <T text="P1 Critical Emergency Code Red" />
-              </span>
-              <h2 className="text-2xl font-black text-slate-900">
-                <T text="Emergency Nurse & Casualty Triggered" />
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-600">
-                <T text="Kiosk Location telemetry dispatched to OPD Casualty Station A & ICU Triage Team." />
-              </p>
-            </div>
-
-            <div className="p-4 bg-red-50 rounded-2xl border border-red-200 text-xs font-semibold text-red-900 space-y-1 text-left">
-              <div><T text="• Hospital ER Helpline: 108 / 104" /></div>
-              <div><T text="• Kiosk ID: Kiosk #01 (OPD Lobby Ground Floor)" /></div>
-              <div><T text="• Automatic ER Red Flag Logged into ABHA Portal" /></div>
-            </div>
-
+            <h2 className="text-xl font-black text-slate-900"><T text="Casualty Emergency Assistance Alerted" /></h2>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              <T text="Triage Station A Nurse and Casualty ER Duty Officer have been notified. Please remain at Kiosk #01." />
+            </p>
             <button
               onClick={() => setShowSosModal(false)}
-              className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-2xl transition-colors cursor-pointer"
+              className="w-full py-3 bg-red-600 text-white font-bold rounded-xl text-xs shadow-md cursor-pointer hover:bg-red-700 transition-colors"
             >
-              <T text="Dismiss SOS Alert" />
+              <T text="Acknowledge & Close" />
             </button>
           </div>
         </div>

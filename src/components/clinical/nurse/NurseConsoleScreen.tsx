@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMediKiosk } from '../../../context/MediKioskContext';
 import { T } from '../../../context/TranslationContext';
 import { ShiftHandoffModal } from './ShiftHandoffModal';
+import { speakText, stopSpeech } from '../../../lib/speechUtils';
 import {
   Users,
   AlertTriangle,
@@ -15,7 +16,11 @@ import {
   Clock,
   Plus,
   RefreshCw,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Megaphone,
+  UserPlus,
+  Trash2,
+  X
 } from 'lucide-react';
 
 export const NurseConsoleScreen: React.FC = () => {
@@ -24,17 +29,139 @@ export const NurseConsoleScreen: React.FC = () => {
 
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<'all' | 'P1' | 'P2' | 'P3'>('all');
   const [showHandoffModal, setShowHandoffModal] = useState<boolean>(false);
+  const [showAddPatientModal, setShowAddPatientModal] = useState<boolean>(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
+
+  // New patient modal inputs
+  const [newPatientName, setNewPatientName] = useState<string>('');
+  const [newPatientAge, setNewPatientAge] = useState<string>('30');
+  const [newPatientGender, setNewPatientGender] = useState<string>('Male');
+  const [newPatientPriority, setNewPatientPriority] = useState<'P1' | 'P2' | 'P3'>('P2');
 
   const filteredQueue = selectedPriorityFilter === 'all'
     ? state.patientQueue
     : state.patientQueue.filter((p) => p.priority === selectedPriorityFilter);
+
+  const handleCallNextPatient = (token: string, name: string) => {
+    speakText(`Calling Token ${token}, ${name}, to OPD Consultation Room 104`, state.language);
+  };
+
+  const handleAddPatient = () => {
+    if (!newPatientName.trim()) return;
+    const newToken = `MK-${Math.floor(1000 + Math.random() * 9000)}`;
+    state.addPatientToQueue({
+      token: newToken,
+      name: newPatientName.trim(),
+      age: Number(newPatientAge) || 30,
+      gender: newPatientGender,
+      priority: newPatientPriority,
+      waitTime: '0m',
+      status: 'waiting'
+    });
+    setNewPatientName('');
+    setShowAddPatientModal(false);
+  };
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8 space-y-6">
       
       {showHandoffModal && (
         <ShiftHandoffModal onClose={() => setShowHandoffModal(false)} />
+      )}
+
+      {/* Add Walk-in Patient Modal */}
+      {showAddPatientModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border-2 border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 text-slate-900">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2 font-black text-base text-slate-900">
+                <UserPlus className="w-5 h-5 text-teal-600" />
+                <span><T text="Register OPD Walk-In Patient" /></span>
+              </div>
+              <button onClick={() => setShowAddPatientModal(false)} className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1"><T text="Patient Name" /></label>
+                <input
+                  type="text"
+                  placeholder="Full Name..."
+                  value={newPatientName}
+                  onChange={(e) => setNewPatientName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none font-medium text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1"><T text="Age" /></label>
+                  <input
+                    type="number"
+                    value={newPatientAge}
+                    onChange={(e) => setNewPatientAge(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none font-medium text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1"><T text="Gender" /></label>
+                  <select
+                    value={newPatientGender}
+                    onChange={(e) => setNewPatientGender(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none font-medium text-slate-900"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1"><T text="Triage Priority Tier" /></label>
+                <div className="flex items-center gap-2">
+                  {(['P1', 'P2', 'P3'] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setNewPatientPriority(p)}
+                      className={`flex-1 py-2 rounded-xl font-bold transition-colors cursor-pointer ${
+                        newPatientPriority === p
+                          ? p === 'P1'
+                            ? 'bg-red-600 text-white shadow-xs'
+                            : p === 'P2'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'bg-teal-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      {p} ({p === 'P1' ? 'Emergency' : p === 'P2' ? 'Urgent' : 'Routine'})
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                onClick={() => setShowAddPatientModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                <T text="Cancel" />
+              </button>
+
+              <button
+                onClick={handleAddPatient}
+                className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs shadow-md cursor-pointer"
+              >
+                <T text="Add Patient to Queue" />
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="max-w-7xl mx-auto space-y-6">
@@ -62,18 +189,19 @@ export const NurseConsoleScreen: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setShowAddPatientModal(true)}
+              className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <T text="Register Walk-In Patient" />
+            </button>
+
+            <button
               onClick={() => setShowHandoffModal(true)}
               className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-teal-800 border border-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
             >
               <FileSpreadsheet className="w-4 h-4 text-teal-600" />
               <T text="Shift Handoff Report" />
-            </button>
-
-            <button
-              onClick={() => navigate('/doctor')}
-              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-teal-600/30 flex items-center gap-1.5 cursor-pointer"
-            >
-              <span><T text="Open Doctor Dashboard" /></span>
             </button>
           </div>
         </div>
@@ -96,7 +224,7 @@ export const NurseConsoleScreen: React.FC = () => {
                 selectedPriorityFilter === 'P1' ? 'bg-red-600 text-white shadow-sm' : 'bg-white border border-red-200 text-red-700 hover:bg-red-50'
               }`}
             >
-              <T text="P1 Critical Emergency" /> (1)
+              <T text="P1 Critical Emergency" />
             </button>
 
             <button
@@ -105,7 +233,7 @@ export const NurseConsoleScreen: React.FC = () => {
                 selectedPriorityFilter === 'P2' ? 'bg-amber-600 text-white shadow-sm' : 'bg-white border border-amber-200 text-amber-800 hover:bg-amber-50'
               }`}
             >
-              <T text="P2 Urgent" /> (1)
+              <T text="P2 Urgent" />
             </button>
           </div>
         </div>
@@ -143,16 +271,25 @@ export const NurseConsoleScreen: React.FC = () => {
 
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={() => handleCallNextPatient(patient.token, patient.name)}
+                    className="px-3.5 py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Call Patient via Loudspeaker TTS"
+                  >
+                    <Megaphone className="w-3.5 h-3.5 text-amber-700" />
+                    <T text="Call Loudspeaker" />
+                  </button>
+
+                  <button
                     onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-teal-800 border border-slate-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-teal-800 border border-slate-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     {isPlayingAudio ? <Pause className="w-3.5 h-3.5 text-teal-600" /> : <Play className="w-3.5 h-3.5 text-teal-600" />}
-                    <T text="Play Kiosk Voice Intake" />
+                    <T text="Play Voice Intake" />
                   </button>
 
                   <button
                     onClick={() => navigate('/doctor')}
-                    className="px-4 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+                    className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
                   >
                     <T text="Send to Doctor Console" />
                   </button>

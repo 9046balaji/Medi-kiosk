@@ -25,7 +25,27 @@ export const FhirExportScreen: React.FC = () => {
   const [copied, setCopied] = useState<boolean>(false);
   const [showPurgeModal, setShowPurgeModal] = useState<boolean>(false);
 
-  const jsonString = JSON.stringify(state.fhirBundle || validFhirR4Bundle, null, 2);
+  // Dynamic FHIR Bundle Payload
+  const dynamicFhirBundle = {
+    ...validFhirR4Bundle,
+    id: `fhir-bundle-${state.opdToken}`,
+    timestamp: new Date().toISOString(),
+    entry: validFhirR4Bundle.entry.map((entry: any) => {
+      if (entry.resource?.resourceType === 'Patient') {
+        return {
+          ...entry,
+          resource: {
+            ...entry.resource,
+            name: [{ text: state.patientName }],
+            identifier: [{ system: 'https://healthid.ndhm.gov.in', value: '91-4589-2041-9872' }]
+          }
+        };
+      }
+      return entry;
+    })
+  };
+
+  const jsonString = JSON.stringify(dynamicFhirBundle, null, 2);
 
   const handleCopyJson = () => {
     navigator.clipboard.writeText(jsonString);
@@ -114,7 +134,7 @@ export const FhirExportScreen: React.FC = () => {
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-800">
               <Code className="w-4 h-4 text-teal-600" />
-              <span>FHIR_Bundle_MK-1042.json</span>
+              <span>FHIR_Bundle_{state.opdToken}.json</span>
             </div>
 
             <button
