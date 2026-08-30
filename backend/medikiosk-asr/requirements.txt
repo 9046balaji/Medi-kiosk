@@ -1,0 +1,38 @@
+# ==============================================================================
+# MediKiosk AI4Bharat IndicConformer 600M ASR Microservice Dependencies
+# Environment: Anaconda environment 'attendance' (Python 3.11)
+# ==============================================================================
+
+# Core Deep Learning & PyTorch Framework
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy<2.0.0
+
+# AI4Bharat NeMo Toolkit & HuggingFace Hub
+huggingface_hub==0.23.2
+git+https://github.com/AI4Bharat/NeMo.git@nemo-v2
+
+# NeMo ASR Model Runtime & Compatibility Bridge
+pytorch_lightning==2.0.9
+pyannote.core>=6.0.0
+pyannote.metrics>=4.1
+datasets>=2.14.0
+jiwer>=3.0.0
+sacrebleu>=2.3.0
+sentencepiece>=0.1.99
+webdataset>=0.2.86
+inflect>=7.0.0
+lhotse>=1.20.0
+ipython>=8.0.0
+
+# Audio Processing & Feature Extraction
+soundfile>=0.12.1
+pydub>=0.25.1
+scipy>=1.11.0
+librosa>=0.10.0
+
+# FastAPI Microservice & HTTP Server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.6.0
+python-multipart>=0.0.6
