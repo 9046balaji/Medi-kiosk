@@ -303,6 +303,57 @@ class IndicTranslator:
 
         return [r for r in results if r is not None]
 
+    def translate_html(
+        self,
+        html_content: str,
+        src_lang: str = "eng_Latn",
+        tgt_lang: str = "tel_Telu",
+        use_beam_search: bool = False
+    ) -> str:
+        """
+        Parses HTML webpage string with BeautifulSoup4, extracts visible text nodes,
+        batch-translates them via IndicTrans2 preserving all HTML formatting, tags, and layout.
+        """
+        if not html_content or not html_content.strip():
+            return html_content
+
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            logger.error("beautifulsoup4 is not installed. Install via `pip install beautifulsoup4`")
+            return html_content
+
+        soup = BeautifulSoup(html_content, "html.parser")
+        tags_to_ignore = ["script", "style", "code", "pre", "noscript"]
+
+        text_nodes = []
+        raw_texts = []
+
+        for element in soup.find_all(text=True):
+            if element.parent and element.parent.name in tags_to_ignore:
+                continue
+            cleaned = element.strip()
+            if cleaned and not cleaned.isnumeric():
+                text_nodes.append(element)
+                raw_texts.append(cleaned)
+
+        if not raw_texts:
+            return str(soup)
+
+        logger.info(f"Extracted {len(raw_texts)} HTML text nodes for batch translation to {tgt_lang}")
+
+        translated_texts = self.translate(
+            sentences=raw_texts,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
+            use_beam_search=use_beam_search
+        )
+
+        for node, translated in zip(text_nodes, translated_texts):
+            node.replace_with(translated)
+
+        return str(soup)
+
     def clear_cache(self):
         self.cache.clear()
 

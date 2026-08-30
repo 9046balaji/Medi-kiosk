@@ -8,7 +8,7 @@ from translator import translator_instance, LANG_CODE_MAP
 
 app = FastAPI(
     title="MediKiosk IndicTrans2 Translation API",
-    description="High-performance backend microservice with LRU caching, static dictionary, and batched inference for website translation.",
+    description="High-performance backend microservice with LRU caching, static dictionary, HTML DOM parsing, and batched inference for website translation.",
     version="2.0.0"
 )
 
@@ -43,6 +43,19 @@ class TranslationResponse(BaseModel):
     translations: List[str]
     model_used: str
     cached_count: int = 0
+
+class HtmlTranslationRequest(BaseModel):
+    html_content: str = Field(..., json_schema_extra={"example": "<h1>Welcome to MediKiosk</h1><p>Select your language to begin.</p>"})
+    src_lang: str = Field("eng_Latn", json_schema_extra={"example": "eng_Latn"})
+    tgt_lang: str = Field("tel_Telu", json_schema_extra={"example": "tel_Telu"})
+    use_beam_search: Optional[bool] = Field(False)
+
+class HtmlTranslationResponse(BaseModel):
+    success: bool
+    src_lang: str
+    tgt_lang: str
+    translated_html: str
+    model_used: str
 
 @app.get("/")
 def read_root():
@@ -109,6 +122,28 @@ def translate_text(request: TranslationRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+
+@app.post("/api/translate-html", response_model=HtmlTranslationResponse)
+def translate_html_endpoint(request: HtmlTranslationRequest):
+    if not request.html_content or not request.html_content.strip():
+        raise HTTPException(status_code=400, detail="html_content cannot be empty.")
+
+    try:
+        translated_html = translator_instance.translate_html(
+            html_content=request.html_content,
+            src_lang=request.src_lang,
+            tgt_lang=request.tgt_lang,
+            use_beam_search=bool(request.use_beam_search)
+        )
+        return HtmlTranslationResponse(
+            success=True,
+            src_lang=request.src_lang,
+            tgt_lang=request.tgt_lang,
+            translated_html=translated_html,
+            model_used=translator_instance.model_name
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"HTML webpage translation failed: {str(e)}")
 
 @app.post("/api/clear-cache")
 def clear_cache():
