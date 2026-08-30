@@ -1,0 +1,16 @@
+# Docker Ignore Rules for MediKiosk Translation Backend
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+.cache/
+scratch/
+tests/
