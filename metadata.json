@@ -1,0 +1,6 @@
+{
+  "name": "MediKiosk",
+  "description": "AI-powered bilingual patient intake kiosk and clinical consultation system for Indian government hospitals & Ministry of Ayush",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
