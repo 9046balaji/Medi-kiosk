@@ -1,0 +1,14 @@
+# Requirements for MediKiosk IndicTrans2 Translation Backend
+# Run with conda environment 'attendance':
+# conda activate attendance
+
+torch>=2.0.0
+transformers>=4.38.0
+sentencepiece>=0.1.99
+IndicTransToolkit @ git+https://github.com/VarunGumma/IndicTransToolkit.git
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.6.0
+huggingface_hub>=0.20.0
+python-dotenv>=1.0.0
+requests>=2.31.0
