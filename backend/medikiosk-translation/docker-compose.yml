@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  medikiosk-translation-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: medikiosk-translation-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - OMP_NUM_THREADS=4
+      - HF_HOME=/app/.cache/huggingface
+    volumes:
+      - hf_model_cache:/app/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  hf_model_cache:
+    driver: local
