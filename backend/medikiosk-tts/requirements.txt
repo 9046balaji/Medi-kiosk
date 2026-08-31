@@ -1,0 +1,18 @@
+# ==============================================================================
+# MediKiosk AI4Bharat Indic Parler-TTS Microservice Dependencies
+# Environment: Anaconda environment 'attendance' (Python 3.11)
+# ==============================================================================
+
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.40.0
+git+https://github.com/huggingface/parler-tts.git
+soundfile>=0.12.1
+scipy>=1.11.0
+numpy<2.0.0
+
+# FastAPI Microservice & Server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.6.0
+python-multipart>=0.0.6

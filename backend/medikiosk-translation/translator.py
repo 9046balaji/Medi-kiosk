@@ -128,6 +128,9 @@ class IndicTranslator:
         self.tokenizer = None
         self.ip = None
         self.is_initialized = False
+        import threading
+        self._lock = threading.Lock()
+        self._idle_timer: Optional[threading.Timer] = None
 
     def _resolve_lang_code(self, code: str) -> str:
         clean = code.strip().lower()
@@ -356,6 +359,38 @@ class IndicTranslator:
 
     def clear_cache(self):
         self.cache.clear()
+
+    def unload(self):
+        """Thread-safe unloading of model weights and freeing of CUDA VRAM."""
+        with self._lock:
+            if not self.is_initialized:
+                return
+            logger.info("Unloading IndicTrans2 model from GPU VRAM...")
+            if self._idle_timer:
+                self._idle_timer.cancel()
+                self._idle_timer = None
+            self.model = None
+            self.tokenizer = None
+            self.ip = None
+            self.is_initialized = False
+            try:
+                import torch, gc
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
+            except Exception as e:
+                logger.warning(f"Error during CUDA cleanup: {e}")
+            logger.info("[IndicTranslator] 🧹 Unloaded translation model — GPU VRAM freed.")
+
+    def reset_idle_timer(self, timeout: float = 60.0):
+        """Schedules auto-eviction after 60 seconds of idle inactivity."""
+        import threading
+        with self._lock:
+            if self._idle_timer:
+                self._idle_timer.cancel()
+            self._idle_timer = threading.Timer(timeout, self.unload)
+            self._idle_timer.daemon = True
+            self._idle_timer.start()
 
 # Singleton instance
 translator_instance = IndicTranslator()

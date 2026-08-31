@@ -90,6 +90,7 @@ class IndicASREngine:
         self.device: Optional[str] = None
         self.is_initialized: bool = False
         self._lock = threading.Lock()  # single-init guard
+        self._idle_timer: Optional[threading.Timer] = None
 
     # ------------------------------------------------------------------
     def initialize(self) -> None:
@@ -165,30 +166,32 @@ class IndicASREngine:
 
         t0 = time.time()
         try:
-            if timestamps:
-                text, ts = self.model(audio_wav_tensor, norm_lang,
-                                     decoding=decoder, compute_timestamps="w")
-                elapsed_ms = (time.time() - t0) * 1000
-                logger.info(f"[IndicASR] [{norm_lang}|{decoder}|ts] {elapsed_ms:.1f}ms → '{text}'")
-                return {
-                    "success": True,
-                    "language_id": norm_lang,
-                    "transcript": text or "",
-                    "timestamps": ts,
-                    "latency_ms": elapsed_ms,
-                    "model_name": self.model_name,
-                }
-            else:
-                text = self.model(audio_wav_tensor, norm_lang, decoding=decoder)
-                elapsed_ms = (time.time() - t0) * 1000
-                logger.info(f"[IndicASR] [{norm_lang}|{decoder}] {elapsed_ms:.1f}ms → '{text}'")
-                return {
-                    "success": True,
-                    "language_id": norm_lang,
-                    "transcript": text or "",
-                    "latency_ms": elapsed_ms,
-                    "model_name": self.model_name,
-                }
+            import torch
+            with torch.inference_mode():
+                if timestamps:
+                    text, ts = self.model(audio_wav_tensor, norm_lang,
+                                         decoding=decoder, compute_timestamps="w")
+                    elapsed_ms = (time.time() - t0) * 1000
+                    logger.info(f"[IndicASR] [{norm_lang}|{decoder}|ts] {elapsed_ms:.1f}ms → '{text}'")
+                    return {
+                        "success": True,
+                        "language_id": norm_lang,
+                        "transcript": text or "",
+                        "timestamps": ts,
+                        "latency_ms": elapsed_ms,
+                        "model_name": self.model_name,
+                    }
+                else:
+                    text = self.model(audio_wav_tensor, norm_lang, decoding=decoder)
+                    elapsed_ms = (time.time() - t0) * 1000
+                    logger.info(f"[IndicASR] [{norm_lang}|{decoder}] {elapsed_ms:.1f}ms → '{text}'")
+                    return {
+                        "success": True,
+                        "language_id": norm_lang,
+                        "transcript": text or "",
+                        "latency_ms": elapsed_ms,
+                        "model_name": self.model_name,
+                    }
 
         except Exception as err:
             elapsed_ms = (time.time() - t0) * 1000
@@ -204,15 +207,46 @@ class IndicASREngine:
 
     # ------------------------------------------------------------------
     def warmup(self) -> None:
-        """Run 2 dummy CUDA inferences to JIT-compile ONNX graph (eliminates cold-start lag)."""
+        """Run CUDA inferences across key language masks to JIT-compile ONNX graph."""
         try:
             import torch
             dummy = torch.zeros(1, 48000)  # 3s silence
-            for lang in ("hi", "ta"):
-                self.transcribe(dummy, lang_code=lang, decoder="ctc")
-            logger.info("[IndicASR] Warmup complete — GPU graph compiled.")
+            warmup_langs = ("hi", "ta", "te", "bn", "mr", "gu", "kn", "ml", "pa", "ur")
+            with torch.inference_mode():
+                for lang in warmup_langs:
+                    self.transcribe(dummy, lang_code=lang, decoder="ctc")
+            logger.info("[IndicASR] Warmup complete — GPU graph compiled for 10 core languages.")
         except Exception as e:
             logger.warning(f"[IndicASR] Warmup skipped: {e}")
+
+    def unload(self) -> None:
+        """Thread-safe unloading of ASR ONNX sessions and clearing of CUDA memory."""
+        with self._lock:
+            if not self.is_initialized:
+                return
+            logger.info("[IndicASR] Unloading ASR ONNX model from memory...")
+            if self._idle_timer:
+                self._idle_timer.cancel()
+                self._idle_timer = None
+            self.model = None
+            self.is_initialized = False
+            try:
+                import torch, gc
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
+            except Exception as e:
+                logger.warning(f"Error during CUDA cleanup: {e}")
+            logger.info("[IndicASR] 🧹 Unloaded ASR ONNX model — GPU VRAM freed.")
+
+    def reset_idle_timer(self, timeout: float = 15.0) -> None:
+        """Schedules auto-eviction after 15 seconds of idle inactivity."""
+        with self._lock:
+            if self._idle_timer:
+                self._idle_timer.cancel()
+            self._idle_timer = threading.Timer(timeout, self.unload)
+            self._idle_timer.daemon = True
+            self._idle_timer.start()
 
 
 # ---------------------------------------------------------------------------

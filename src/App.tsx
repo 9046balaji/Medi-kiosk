@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { MediKioskProvider } from './context/MediKioskContext';
 import { TranslationProvider } from './context/TranslationContext';
 
@@ -46,22 +46,56 @@ import { DoctorSettingsScreen } from './components/settings/doctor/DoctorSetting
 import { NurseSettingsScreen } from './components/settings/nurse/NurseSettingsScreen';
 import { SystemSettingsScreen } from './components/settings/system/SystemSettingsScreen';
 
+const isKioskRoute = (pathname: string) => {
+  return [
+    '/',
+    '/auth',
+    '/auth/scan',
+    '/auth/returning',
+    '/intake',
+    '/scan',
+    '/scan/results',
+    '/complete',
+    '/offline'
+  ].includes(pathname);
+};
+
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50 text-slate-900">
-      {/* Permanent Fixed Left Side Menu Bar */}
-      <ClinicalSidebar />
-      
-      {/* Main Content View Container */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header with 22-Language IndicTrans2 Selector Present on EVERY Page */}
+  const location = useLocation();
+  const isKiosk = isKioskRoute(location.pathname);
+
+  if (isKiosk) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-teal-500 selection:text-white">
+        {/* Top Kiosk Header */}
         <KioskHeader />
-        
-        <main className="flex-1">
+
+        {/* Full-width Kiosk Screen Container */}
+        <main className="flex-1 flex flex-col relative">
           {children}
         </main>
-        
+
         <Footer isDark={false} />
+        <DevLauncher />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-900 text-slate-100">
+      {/* Clinical Sidebar for Healthcare Professionals */}
+      <ClinicalSidebar />
+
+      {/* Clinical Main View */}
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
+        <KioskHeader />
+
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+          {children}
+        </main>
+
+        <Footer isDark={true} />
+        <DevLauncher />
       </div>
     </div>
   );

@@ -126,6 +126,7 @@ Word Timestamps (CTC)   :  ✅ Working  ~30 ms
 |---|---|
 | **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Lucide React, React Router v6 |
 | **ASR Engine** | AI4Bharat IndicConformer 600M (ONNX Runtime + CUDA), FastAPI, port 8001 |
+| **TTS Engine** | AI4Bharat Indic Parler-TTS 20-Language (PyTorch CUDA), FastAPI, port 8002 |
 | **Translation** | AI4Bharat IndicTrans2 200M (PyTorch FP16), FastAPI, port 8000 |
 | **Interoperability** | HL7 FHIR R4, ABDM Level-3, SNOMED CT, NAMASTE Ayush |
 | **Privacy** | DPDP Act 2023 compliant, ephemeral session RAM |
@@ -157,7 +158,18 @@ C:\ProgramData\anaconda3\envs\attendance\python.exe backend/medikiosk-asr/main.p
 # → http://localhost:8001/docs  (Swagger UI)
 ```
 
-### 3. Translation Backend (IndicTrans2 — port 8000)
+### 3. TTS Backend (Indic Parler-TTS — port 8002)
+```bash
+# Download model weights (one-time, ~3.75GB)
+python backend/medikiosk-tts/download_tts.py
+
+# Start TTS server
+C:\ProgramData\anaconda3\envs\attendance\python.exe backend/medikiosk-tts/main.py
+# → http://localhost:8002
+# → http://localhost:8002/docs  (Swagger UI)
+```
+
+### 4. Translation Backend (IndicTrans2 — port 8000)
 ```bash
 cd backend/medikiosk-translation
 pip install -r requirements.txt
@@ -165,7 +177,7 @@ python main.py
 # → http://localhost:8000
 ```
 
-### 4. Production Build
+### 5. Production Build
 ```bash
 npx tsc --noEmit   # type check
 npm run build      # → dist/

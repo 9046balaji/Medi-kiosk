@@ -49,20 +49,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
-# Startup: initialize model + GPU warmup in a daemon thread
-# ---------------------------------------------------------------------------
 @app.on_event("startup")
 def startup_event():
-    def _init_and_warmup():
-        try:
-            asr_engine.initialize()
-            asr_engine.warmup()
-        except Exception as e:
-            logger.error(f"ASR startup failed: {e}")
+    logger.info("MediKiosk ASR Server online — Lazy on-demand ONNX loading active (0 MB initial VRAM).")
 
-    logger.info("Starting IndicConformer 600M initialisation in background…")
-    threading.Thread(target=_init_and_warmup, daemon=True).start()
+@app.post("/api/unload", tags=["Management"])
+def unload_model():
+    """Immediately unloads ASR ONNX sessions and frees CUDA VRAM."""
+    asr_engine.unload()
+    return {"status": "unloaded", "message": "ASR model removed from GPU VRAM."}
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +182,7 @@ async def transcribe_ctc(
                 is_silent=True, latency_ms=0.0,
                 model_name=asr_engine.model_name, decoder="ctc",
             )
+        asr_engine.reset_idle_timer(15.0)
         return TranscribeResponse(
             success=res.get("success", False),
             language_id=res.get("language_id", lang_code),

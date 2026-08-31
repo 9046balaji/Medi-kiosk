@@ -25,9 +25,13 @@ import threading
 
 @app.on_event("startup")
 def startup_event():
-    print("Auto-initializing PyTorch Neural Translation Model in background thread...")
-    thread = threading.Thread(target=translator_instance.initialize, daemon=True)
-    thread.start()
+    print("MediKiosk Translation Server online — Lazy on-demand loading active (0 MB initial VRAM).")
+
+@app.post("/api/unload")
+def unload_model():
+    """Immediately unloads translation model weights and frees CUDA VRAM."""
+    translator_instance.unload()
+    return {"status": "unloaded", "message": "Translation model removed from GPU VRAM."}
 
 class TranslationRequest(BaseModel):
     text: Optional[str] = Field(None, json_schema_extra={"example": "I have severe stomach pain for 3 weeks."})
@@ -112,6 +116,7 @@ def translate_text(request: TranslationRequest):
             tgt_lang=request.tgt_lang,
             use_beam_search=bool(request.use_beam_search)
         )
+        translator_instance.reset_idle_timer(15.0)
         return TranslationResponse(
             success=True,
             src_lang=request.src_lang,
@@ -135,6 +140,7 @@ def translate_html_endpoint(request: HtmlTranslationRequest):
             tgt_lang=request.tgt_lang,
             use_beam_search=bool(request.use_beam_search)
         )
+        translator_instance.reset_idle_timer(15.0)
         return HtmlTranslationResponse(
             success=True,
             src_lang=request.src_lang,
