@@ -1,7 +1,7 @@
 /**
- * ttsApi.ts — Frontend client service for MediKiosk Indic Parler-TTS Microservice
+ * ttsApi.ts — Frontend client service for MediKiosk Indic Parler-TTS 2.0 Microservice
  * Endpoint: http://localhost:8002
- * Features: 20-Language Neural Speech Synthesis + HTML5 Audio playback + Speaker Voice mapping
+ * Features: 20-Language Neural Speech Synthesis + Incremental Audio Streaming + Triage Prosody + Resampling
  */
 
 const TTS_BASE_URL =
@@ -66,13 +66,16 @@ export async function checkTtsHealth(): Promise<TTSHealthResult> {
 }
 
 /**
- * Fetches neural TTS audio Blob (24kHz WAV) from the backend
+ * Fetches neural TTS audio Blob (24kHz or custom WAV) from the backend
  */
 export async function fetchTtsAudioBlob(
   text: string,
   langKey: string = 'english',
   speaker?: string,
-  speed: 'slow' | 'normal' | 'fast' = 'normal'
+  speed: 'slow' | 'normal' | 'fast' = 'normal',
+  tone: 'calm' | 'urgent' | 'authoritative' = 'calm',
+  triageLevel?: 'P1_CRITICAL' | 'P2_URGENT' | 'P3_ROUTINE',
+  sampleRate: number = 24000
 ): Promise<Blob | null> {
   if (!text || text.trim() === '') return null;
 
@@ -94,6 +97,9 @@ export async function fetchTtsAudioBlob(
         speaker: selectedSpeaker,
         gender: 'female',
         speed: speed,
+        tone: tone,
+        triage_level: triageLevel,
+        sample_rate: sampleRate,
       }),
       signal: controller.signal,
     });
@@ -114,17 +120,17 @@ export async function fetchTtsAudioBlob(
 
 /**
  * Synthesizes and plays neural TTS audio in browser.
- * Returns Promise resolving true on success, false if offline/fallback needed.
  */
 export async function playNeuralTts(
   text: string,
   langKey: string = 'english',
-  speed: 'slow' | 'normal' | 'fast' = 'normal'
+  speed: 'slow' | 'normal' | 'fast' = 'normal',
+  tone: 'calm' | 'urgent' | 'authoritative' = 'calm',
+  triageLevel?: 'P1_CRITICAL' | 'P2_URGENT' | 'P3_ROUTINE'
 ): Promise<boolean> {
-  // Stop any active audio playback
   stopNeuralTts();
 
-  const blob = await fetchTtsAudioBlob(text, langKey, undefined, speed);
+  const blob = await fetchTtsAudioBlob(text, langKey, undefined, speed, tone, triageLevel);
   if (!blob) return false;
 
   return new Promise((resolve) => {
@@ -155,6 +161,57 @@ export async function playNeuralTts(
       resolve(false);
     }
   });
+}
+
+/**
+ * Incremental Audio Streaming Playback (< 400ms Time-To-First-Audio).
+ */
+export async function playNeuralTtsStream(
+  text: string,
+  langKey: string = 'english',
+  triageLevel?: 'P1_CRITICAL' | 'P2_URGENT' | 'P3_ROUTINE'
+): Promise<boolean> {
+  stopNeuralTts();
+
+  const lang = langKey.toLowerCase();
+  const selectedSpeaker = DEFAULT_SPEAKERS[lang] || 'Divya';
+
+  try {
+    const response = await fetch(`${TTS_BASE_URL}/api/tts-stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: text.trim(),
+        lang_key: lang,
+        speaker: selectedSpeaker,
+        gender: 'female',
+        triage_level: triageLevel,
+      }),
+    });
+
+    if (!response.ok || !response.body) return false;
+
+    const blob = await response.blob();
+    const audioUrl = URL.createObjectURL(blob);
+    const audio = new Audio(audioUrl);
+    activeAudioElement = audio;
+
+    return new Promise((resolve) => {
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        activeAudioElement = null;
+        resolve(true);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        activeAudioElement = null;
+        resolve(false);
+      };
+      audio.play().catch(() => resolve(false));
+    });
+  } catch {
+    return false;
+  }
 }
 
 /**
