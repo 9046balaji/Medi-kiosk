@@ -6,7 +6,7 @@ import { RedFlagModal } from './RedFlagModal';
 import { speakText, stopSpeech } from '../../../lib/speechUtils';
 import { transcribeAudio, checkAsrHealth, ASRResult, ASRHealthResult } from '../../../lib/asrApi';
 import { translateText } from '../../../lib/translationApi';
-import { checkEmergencyTriage } from '../../../lib/emergencyApi';
+import { checkEmergencyTriage, TriageResult } from '../../../lib/emergencyApi';
 import { getFloresCode } from '../../../lib/languageMap';
 import { playNeuralTts, stopNeuralTts } from '../../../lib/ttsApi';
 import {
@@ -88,6 +88,7 @@ export const IntakeScreen: React.FC = () => {
   const [asrMode, setAsrMode] = useState<AsrMode>('ctc');
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [showRedFlagModal, setShowRedFlagModal] = useState(showRedFlagPreset);
+  const [triageResult, setTriageResult] = useState<TriageResult | null>(null);
   const [asrHealth, setAsrHealth] = useState<ASRHealthResult | null>(null);
   const [socratesIndex, setSocratesIndex] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
@@ -189,7 +190,8 @@ export const IntakeScreen: React.FC = () => {
     }
 
     // Emergency triage check
-    checkEmergencyTriage(symptomText, state.language).then((triageRes) => {
+    checkEmergencyTriage(symptomText, state.language, state.patientAge, state.patientGender, false, state.abhaId || 'kiosk-sess-1').then((triageRes) => {
+      setTriageResult(triageRes);
       if (triageRes.is_emergency) {
         setShowRedFlagModal(true);
       }
@@ -494,7 +496,8 @@ export const IntakeScreen: React.FC = () => {
       if (state.emergencyContext) {
         setShowRedFlagModal(true);
       } else {
-        checkEmergencyTriage(transcript, state.language).then((triageRes) => {
+        checkEmergencyTriage(transcript, state.language, state.patientAge, state.patientGender, false, state.abhaId || 'kiosk-sess-1').then((triageRes) => {
+          setTriageResult(triageRes);
           if (triageRes.is_emergency) {
             setShowRedFlagModal(true);
           }
@@ -525,9 +528,10 @@ export const IntakeScreen: React.FC = () => {
           onClose={() => setShowRedFlagModal(false)}
           onEscalateToNurse={() => {
             setShowRedFlagModal(false);
-            navigate('/emergency');
+            navigate('/complete');
           }}
           emergencyContext={emergencyContext}
+          triageResult={triageResult}
         />
       )}
 
