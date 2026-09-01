@@ -11,7 +11,7 @@ export const Footer: React.FC<{ isDark?: boolean }> = ({ isDark = false }) => {
           : 'bg-slate-50 border-slate-200 text-slate-600'
       }`}
     >
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-center md:text-left">
+      <div className="w-full px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-3 text-center md:text-left">
         
         {/* Left: Ministry & ABDM Compliance */}
         <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">

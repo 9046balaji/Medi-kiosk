@@ -535,7 +535,7 @@ export const IntakeScreen: React.FC = () => {
         />
       )}
 
-      <div className="max-w-6xl mx-auto space-y-4">
+      <div className="w-full space-y-4">
 
         {/* ─── 3-Step Breadcrumb Bar ─── */}
         <div className="bg-white p-3.5 sm:p-4 rounded-2xl border-2 border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">

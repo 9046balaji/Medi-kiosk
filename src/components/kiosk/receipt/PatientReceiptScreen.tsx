@@ -54,7 +54,7 @@ export const PatientReceiptScreen: React.FC = () => {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-slate-50 via-emerald-50/20 to-slate-100 p-4 sm:p-6 lg:p-8 flex flex-col justify-between space-y-6">
-      <div className="max-w-2xl mx-auto w-full space-y-5">
+      <div className="w-full space-y-5">
         
         {/* ── Top Success Banner (Hidden during Print) ── */}
         <div className="text-center space-y-2 print:hidden no-print">

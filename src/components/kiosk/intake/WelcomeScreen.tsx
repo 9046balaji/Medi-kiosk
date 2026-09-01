@@ -98,7 +98,7 @@ export const WelcomeScreen: React.FC = () => {
 
       {/* ── Main Kiosk Page (Languages, Voice Intake, ABHA, Returning Patient) ── */}
       <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-slate-50 via-blue-50/20 to-slate-100 p-4 sm:p-6 lg:p-8 flex flex-col justify-between space-y-6">
-        <div className="max-w-6xl mx-auto w-full space-y-6">
+        <div className="w-full space-y-6">
 
           {/* ── Header Banner ── */}
           <div className="relative bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-900 text-white rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden border-2 border-blue-500/40">

@@ -74,7 +74,7 @@ export const KioskWelcomePage: React.FC = () => {
       <div className="absolute top-0 right-1/4 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="max-w-7xl mx-auto w-full space-y-6 relative z-10">
+      <div className="w-full space-y-6 relative z-10">
 
         {/* ── Hero Welcome Section with 3D Hologram & Hospital Badges ── */}
         <div className="relative bg-gradient-to-r from-teal-950/90 via-slate-900/90 to-emerald-950/90 border-2 border-teal-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden backdrop-blur-xl">

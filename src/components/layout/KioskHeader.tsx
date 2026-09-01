@@ -193,7 +193,7 @@ export const KioskHeader: React.FC = () => {
   return (
     <>
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b-2 border-slate-200 shadow-sm transition-all print:hidden">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-2 sm:gap-4">
           
           {/* Left: Branding with Ayush Emblem & Hospital Header */}
           <div className="flex items-center gap-3 cursor-pointer shrink-0" onClick={() => navigate('/')}>

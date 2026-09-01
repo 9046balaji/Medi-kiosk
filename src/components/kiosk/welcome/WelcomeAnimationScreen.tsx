@@ -196,7 +196,7 @@ export const WelcomeAnimationScreen: React.FC<WelcomeAnimationScreenProps> = ({
       </div>
 
       {/* ── CENTER STAGE: Split Layout with Hospital Imagery (Left) & Dedicated 3D Hologram (Right) ── */}
-      <div className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 my-auto">
+      <div className="relative z-10 w-full px-4 sm:px-8 my-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
 
           {/* Left Column: Hospital Information & Real Visual Image Cards */}

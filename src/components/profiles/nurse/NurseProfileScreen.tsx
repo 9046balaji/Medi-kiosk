@@ -22,7 +22,7 @@ export const NurseProfileScreen: React.FC = () => {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8 space-y-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         
         {/* Header */}
         <div className="p-6 bg-white border-2 border-slate-200 rounded-3xl shadow-sm space-y-4">

@@ -37,7 +37,7 @@ export const ReturningPatientScreen: React.FC = () => {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-slate-50 via-teal-50/20 to-slate-100 p-4 sm:p-6 lg:p-8 flex flex-col justify-between">
-      <div className="max-w-4xl mx-auto w-full space-y-6">
+      <div className="w-full space-y-6">
         
         {/* Header */}
         <div className="flex items-center justify-between">

@@ -173,7 +173,7 @@ export const DocScannerScreen: React.FC = () => {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-slate-50 text-slate-900 p-3 sm:p-6 lg:p-8 space-y-4">
-      <div className="max-w-5xl mx-auto space-y-4">
+      <div className="w-full space-y-4">
 
         {/* ─── 3-Step Breadcrumb ─── */}
         <div className="bg-white p-3.5 sm:p-4 rounded-2xl border-2 border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">

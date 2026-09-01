@@ -78,7 +78,7 @@ export const QrScannerScreen: React.FC = () => {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8 space-y-6">
-      <div className="max-w-xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         
         {/* Header */}
         <div className="flex items-center justify-between">
