@@ -67,7 +67,7 @@ export const AdminProfileScreen: React.FC = () => {
         </div>
 
         {/* Fleet Telemetry Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="p-5 bg-white rounded-3xl border-2 border-slate-200 shadow-sm space-y-2">
             <div className="text-xs font-bold uppercase text-slate-500"><T text="Active Kiosk Terminals" /></div>
             <div className="text-3xl font-black text-slate-900">5 Online</div>
@@ -78,6 +78,15 @@ export const AdminProfileScreen: React.FC = () => {
             <div className="text-xs font-bold uppercase text-slate-500"><T text="IndicTrans2 AI Daemon" /></div>
             <div className="text-3xl font-black text-teal-700">Port 8000</div>
             <div className="text-xs text-teal-800 font-bold"><T text="FP16 Micro-batch 15ms" /></div>
+          </div>
+
+          <div className="p-5 bg-white rounded-3xl border-2 border-purple-200 bg-purple-50/50 shadow-sm space-y-2">
+            <div className="text-xs font-bold uppercase text-purple-700"><T text="MedGemma Colab Engine" /></div>
+            <div className="text-2xl font-black text-purple-900 truncate">Port 8005</div>
+            <div className="text-xs text-purple-800 font-bold flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="truncate">unilludedly-pipier-paola.ngrok-free.dev</span>
+            </div>
           </div>
 
           <div className="p-5 bg-white rounded-3xl border-2 border-slate-200 shadow-sm space-y-2">

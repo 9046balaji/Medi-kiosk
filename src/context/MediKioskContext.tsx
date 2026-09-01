@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   MediKioskState,
   Language,
@@ -11,7 +11,12 @@ import {
   DashavidhaParameter,
   RedFlagAlert,
   Discrepancy,
-  PatientQueueItem
+  PatientQueueItem,
+  ConversationTurn,
+  DetectedSymptom,
+  EmergencyContext,
+  PatientLockerDocument,
+  PatientSavedConsultation,
 } from '../types';
 import {
   initialDashavidhaParams,
@@ -23,6 +28,18 @@ import {
   initialSoapDraft,
   validFhirR4Bundle
 } from '../data/mockData';
+
+import {
+  checkMedGemmaHealth,
+  resolveDiscrepancyApi,
+  synthesizeClinicalNoteApi,
+  askMedGemmaNextQuestion,
+  runEmergencyContextAnalysis,
+} from '../lib/medgemmaApi';
+import { playNeuralTts } from '../lib/ttsApi';
+import { checkEmergencyTriage } from '../lib/emergencyApi';
+import { translateText } from '../lib/translationApi';
+import { getFloresCode } from '../lib/languageMap';
 
 const MediKioskContext = createContext<MediKioskState | undefined>(undefined);
 
@@ -96,6 +113,143 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       timestamp: 'Today, 10:40 AM'
     }
   ]);
+
+  // Patient Health Locker & Document Vault (Persisted records for returning patient)
+  const [patientDocuments, setPatientDocuments] = useState<PatientLockerDocument[]>([
+    {
+      id: 'pdoc-1',
+      title: 'Dr. Arvind Sharma OPD Prescription (AIIA)',
+      category: 'Prescription',
+      date: '14 May 2026',
+      fileName: 'Rx_AIIA_OPD_14May2026.pdf',
+      fileSize: '1.4 MB',
+      uploadedBy: 'abha_sync',
+      ocrExtractedMeds: ['Tab. Pantoprazole 40mg (1-0-0 AC)', 'Avipattikar Churna 3g (1-0-1 PC)', 'Sutshekhar Ras 125mg (0-0-1 HS)'],
+      notes: 'Prescribed for severe epigastric burning and acid reflux (Amlapitta)'
+    },
+    {
+      id: 'pdoc-2',
+      title: 'Comprehensive Metabolic Panel & Blood Glucose',
+      category: 'Lab Report',
+      date: '12 May 2026',
+      fileName: 'Pathology_Report_AIIA_May2026.pdf',
+      fileSize: '840 KB',
+      uploadedBy: 'abha_sync',
+      ocrExtractedMeds: ['Fasting Blood Sugar: 112 mg/dL (Borderline High)', 'HbA1c: 6.2% (Pre-diabetic)'],
+      notes: 'Routine fasting glucose and lipid profile test'
+    },
+    {
+      id: 'pdoc-3',
+      title: 'Ayush Panchakarma Therapy Discharge Summary',
+      category: 'Ayush Treatment',
+      date: '22 Dec 2025',
+      fileName: 'Ayush_Discharge_Summary_Dec2025.pdf',
+      fileSize: '2.1 MB',
+      uploadedBy: 'patient_kiosk',
+      ocrExtractedMeds: ['Virechana Karma protocol completed (7 Days)', 'Shaman Aushadhi follow-up'],
+      notes: 'Completed 7-day Ayurvedic Pitta detox regimen'
+    }
+  ]);
+
+  // Saved Past Consultations & AI Intake History for Logged-In ABHA Patient
+  const [savedConsultations, setSavedConsultations] = useState<PatientSavedConsultation[]>([
+    {
+      id: 'consult-1',
+      visitDate: '14 May 2026',
+      opdToken: 'MK-1042',
+      chiefComplaint: 'Epigastric burning pain & post-prandial acid reflux (Amlapitta)',
+      mode: 'ayurvedic',
+      conversationHistory: [
+        {
+          speaker: 'ai',
+          text: 'Hello! Where exactly in your body are you experiencing discomfort or pain?',
+          timestamp: Date.now() - 10000000,
+          turnIndex: 0
+        },
+        {
+          speaker: 'patient',
+          text: 'मुझे पिछले तीन हफ़्तों से पेट के ऊपरी हिस्से में बहुत जलन हो रही है, खासकर खाना खाने के बाद।',
+          translatedText: 'I have severe burning in my upper stomach for the last three weeks, especially after eating.',
+          timestamp: Date.now() - 9980000,
+          turnIndex: 1
+        },
+        {
+          speaker: 'ai',
+          text: 'I understand you are having epigastric burning pain. Does this burning spread up to your chest or throat, and do you experience sour belching?',
+          timestamp: Date.now() - 9950000,
+          turnIndex: 2
+        },
+        {
+          speaker: 'patient',
+          text: 'हाँ, रात को खट्टी डकारें आती हैं और गले तक खट्टा पानी आता है।',
+          translatedText: 'Yes, I get sour belching at night and sour fluid rises up to my throat.',
+          timestamp: Date.now() - 9920000,
+          turnIndex: 3
+        }
+      ],
+      scannedDocuments: [
+        {
+          id: 'doc-past-1',
+          thumbnail: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&auto=format&fit=crop&q=80',
+          type: 'Prescription',
+          timestamp: '14 May 2026, 10:38 AM'
+        }
+      ],
+      extractedEntities: [
+        {
+          id: 'ent-1',
+          drugName: 'Tab. Pantoprazole 40mg',
+          dosage: '40mg',
+          frequency: '1-0-0 (Before Meals) • 14 Days',
+          route: 'Oral',
+          confidence: 0.98,
+          verified: true,
+          flagged: false
+        },
+        {
+          id: 'ent-2',
+          drugName: 'Avipattikar Churna 3g',
+          dosage: '3g',
+          frequency: '1-0-1 (After Meals)',
+          route: 'Oral',
+          confidence: 0.95,
+          verified: true,
+          flagged: false
+        }
+      ],
+      soapSummary: {
+        subjective: '45yo male presenting with 3-week history of epigastric burning and nocturnal sour belching.',
+        objective: 'Vitals: BP 128/82, HR 76. Epigastric tenderness on deep palpation without guarding.',
+        assessment: 'Amlapitta (Gastroesophageal Acid Reflux / Non-ulcer Dyspepsia) with Pitta dominance.',
+        plan: 'Pitta pacifying diet, Tab. Pantoprazole 40mg AC, Avipattikar Churna 3g PC with lukewarm water.'
+      },
+      dashavidhaSummary: {
+        Prakriti: 'Pitta-Kapha',
+        Vikriti: 'Pitta Vriddhi (Amlapitta)',
+        Agni: 'Tikshnagni (Intense / Acidic Fire)',
+        Sara: 'Rasa-Mamsa Sara',
+        Satmya: 'Katu-Amla Satmya (Aggravating)'
+      },
+      attendingDoctor: 'Dr. Arvind Sharma (MD Ayush)',
+      assignedRoom: 'Room 104 (Ayush OPD)',
+      abhaId: '91-4589-2041-9872',
+      status: 'completed'
+    }
+  ]);
+
+  const handleUploadPatientDocument = useCallback((doc: Omit<PatientLockerDocument, 'id' | 'date'>) => {
+    const newDoc: PatientLockerDocument = {
+      ...doc,
+      id: `pdoc-${Date.now()}`,
+      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    };
+    setPatientDocuments((prev) => [newDoc, ...prev]);
+  }, []);
+
+  const handleDeletePatientDocument = useCallback((id: string) => {
+    setPatientDocuments((prev) => prev.filter((d) => d.id !== id));
+  }, []);
+
   const [extractedEntities, setExtractedEntities] = useState<ExtractedEntity[]>(initialExtractedEntities);
   const [labValues, setLabValues] = useState<LabValue[]>(initialLabValues);
 
@@ -116,6 +270,188 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Queue
   const [patientQueue, setPatientQueue] = useState<PatientQueueItem[]>(initialPatientQueue);
+
+  // MedGemma Colab State
+  const [isMedGemmaOnline, setIsMedGemmaOnline] = useState<boolean>(false);
+  const [medgemmaEndpoint, setMedgemmaEndpoint] = useState<string>('https://unilludedly-pipier-paola.ngrok-free.dev');
+
+  // MedGemma Conversational Brain State
+  const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([]);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [detectedSymptoms, setDetectedSymptoms] = useState<DetectedSymptom[]>([]);
+  const [emergencyContext, setEmergencyContext] = useState<EmergencyContext | null>(null);
+  const [aiGeneratedQuestion, setAiGeneratedQuestion] = useState<string>(
+    'Hello! Where exactly in your body are you experiencing discomfort or pain?'
+  );
+  const [intakeComplete, setIntakeComplete] = useState<boolean>(false);
+
+  useEffect(() => {
+    checkMedGemmaHealth().then((res) => {
+      setIsMedGemmaOnline(res.online);
+      if (res.endpoint) setMedgemmaEndpoint(res.endpoint);
+    });
+  }, []);
+
+  const handleResolveDiscrepancyWithAi = async (index: number) => {
+    const disc = discrepancies[index];
+    if (!disc) return;
+    const aiRes = await resolveDiscrepancyApi(disc.voiceSays, disc.documentSays, disc.field);
+    setDiscrepancies((prev) => {
+      const updated = [...prev];
+      if (updated[index]) {
+        updated[index] = {
+          ...updated[index],
+          status: aiRes.recommended_resolution === 'accepted_voice' ? 'accepted_voice' : 'accepted_ocr'
+        };
+      }
+      return updated;
+    });
+  };
+
+  const handleSynthesizeSoapWithAi = async () => {
+    const flags = redFlags.map((rf) => rf.keyword);
+    const ocrSummary = extractedEntities.map((e) => `${e.drugName} ${e.dosage} (${e.frequency})`).join('; ');
+    const res = await synthesizeClinicalNoteApi(transcript, ocrSummary, flags, mode);
+    if (res.soap) {
+      setSoapDraft({
+        subjective: res.soap.subjective,
+        objective: res.soap.objective,
+        assessment: res.soap.assessment,
+        plan: res.soap.plan
+      });
+    }
+  };
+
+  /**
+   * ★ CORE ORCHESTRATOR: AI-driven intake turn.
+   *
+   * Flow per patient utterance:
+   *  1. Record patient turn into conversation history
+   *  2. Run deterministic emergency triage (always, zero latency)
+   *  3. If emergency → enrich with MedGemma context, set emergencyContext state
+   *  4. If no emergency → call MedGemma for next adaptive question
+   *  5. Translate question to patient's language
+   *  6. Play via TTS
+   *  7. Record AI turn into conversation history
+   *  8. Update detected symptoms + SOAP partial
+   */
+  const handleAiDrivenIntakeTurn = useCallback(async (
+    rawTranscript: string,
+    translatedTranscript: string
+  ) => {
+    if (!rawTranscript.trim() || isAiThinking) return;
+
+    const turnIdx = conversationHistory.length;
+
+    // Step 1 — Record patient turn
+    const patientTurn: ConversationTurn = {
+      speaker: 'patient',
+      text: rawTranscript,
+      translatedText: translatedTranscript || rawTranscript,
+      timestamp: Date.now(),
+      turnIndex: turnIdx,
+    };
+    const updatedHistory = [...conversationHistory, patientTurn];
+    setConversationHistory(updatedHistory);
+
+    // Step 2 — Deterministic emergency triage (runs in parallel, no wait)
+    checkEmergencyTriage(translatedTranscript || rawTranscript, language).then(async (triageRes) => {
+      if (triageRes.is_emergency) {
+        const keywords = triageRes.detected_flags.map((f) => f.phrase);
+        // Step 3 — Enrich with MedGemma emergency context (async, doesn't block question gen)
+        const ctx = await runEmergencyContextAnalysis(
+          translatedTranscript || rawTranscript,
+          keywords,
+          language
+        );
+        setEmergencyContext(ctx);
+      }
+    });
+
+    // Step 4 — Ask MedGemma for next adaptive question
+    setIsAiThinking(true);
+    try {
+      const ocrSummary = [
+        ...extractedEntities.map((e) => `${e.drugName} ${e.dosage}`),
+        ...patientDocuments.flatMap((d) => d.ocrExtractedMeds || [])
+      ].filter(Boolean);
+      const intakeRes = await askMedGemmaNextQuestion(
+        updatedHistory,
+        translatedTranscript || rawTranscript,
+        ocrSummary,
+        mode === 'dual' ? 'allopathic' : mode,
+        dashavidhaStep,
+        language
+      );
+
+      let nextQuestion = intakeRes.next_question;
+
+      // Step 5 — Translate back to patient's language (if not English)
+      if (language !== 'english' && nextQuestion) {
+        try {
+          const flores = getFloresCode(language as never);
+          nextQuestion = await translateText(nextQuestion, 'eng_Latn', flores) || nextQuestion;
+        } catch { /* keep English question */ }
+      }
+
+      setAiGeneratedQuestion(nextQuestion);
+
+      // Update detected symptoms
+      if (intakeRes.detected_symptoms?.length > 0) {
+        setDetectedSymptoms((prev) => [
+          ...prev,
+          ...intakeRes.detected_symptoms.filter(
+            (s) => !prev.some((p) => p.symptom === s.symptom)
+          ),
+        ]);
+      }
+
+      // Update partial SOAP
+      if (intakeRes.soap_partial?.subjective) {
+        setSoapDraft((prev) => ({
+          ...prev,
+          subjective: intakeRes.soap_partial.subjective || prev.subjective,
+        }));
+      }
+
+      // Mark intake complete
+      if (intakeRes.intake_complete) {
+        setIntakeComplete(true);
+        // Auto-synthesize final SOAP when done
+        handleSynthesizeSoapWithAi();
+      }
+
+      // Step 6 — Play question via TTS (non-blocking)
+      playNeuralTts(nextQuestion, language).catch(() => {});
+
+      // Step 7 — Record AI turn
+      const aiTurn: ConversationTurn = {
+        speaker: 'ai',
+        text: nextQuestion,
+        timestamp: Date.now(),
+        turnIndex: updatedHistory.length,
+      };
+      setConversationHistory((prev) => [...prev, aiTurn]);
+
+      // Update transcript string for backward compat
+      setTranscript((prev) =>
+        prev ? `${prev} ${translatedTranscript || rawTranscript}` : translatedTranscript || rawTranscript
+      );
+    } catch (err) {
+      console.error('[MediKiosk Orchestrator] handleAiDrivenIntakeTurn error:', err);
+    } finally {
+      setIsAiThinking(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationHistory, isAiThinking, language, mode, dashavidhaStep, extractedEntities]);
+
+  const handleClearConversationHistory = () => {
+    setConversationHistory([]);
+    setDetectedSymptoms([]);
+    setEmergencyContext(null);
+    setAiGeneratedQuestion('Hello! Where exactly in your body are you experiencing discomfort or pain?');
+    setIntakeComplete(false);
+  };
 
   // Actions
   const handleSetAbhaVerified = (verified: boolean, returning = true) => {
@@ -365,7 +701,48 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setFhirBundle(dynamicBundle);
   }, [patientName, opdToken, abhaId, patientGender, patientAge, soapDraft, dashavidhaDraft]);
 
+  const handleSaveCurrentConsultationToLocker = useCallback(() => {
+    if (!abhaId) return; // Anonymous patients follow zero-retention ephemeral policy
+
+    const newConsultation: PatientSavedConsultation = {
+      id: `consult-${Date.now()}`,
+      visitDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      opdToken: opdToken || 'MK-1042',
+      chiefComplaint: detectedSymptoms.map((s) => s.symptom).join(', ') || 'Amlapitta & Epigastric Burning',
+      mode: mode,
+      conversationHistory: conversationHistory.length > 0 ? [...conversationHistory] : [
+        {
+          speaker: 'ai',
+          text: 'Hello! Where exactly in your body are you experiencing discomfort or pain?',
+          timestamp: Date.now() - 60000,
+          turnIndex: 0
+        },
+        {
+          speaker: 'patient',
+          text: transcript || 'मुझे पेट में जलन और एसिडिटी की समस्या है।',
+          translatedText: 'I have burning sensation in my stomach and acidity issue.',
+          timestamp: Date.now() - 40000,
+          turnIndex: 1
+        }
+      ],
+      scannedDocuments: [...scannedDocuments],
+      extractedEntities: [...extractedEntities],
+      soapSummary: { ...soapDraft },
+      attendingDoctor: 'Dr. Arvind Sharma (MD Ayush)',
+      assignedRoom: 'Room 104 (Ayush OPD)',
+      abhaId: abhaId,
+      status: 'completed'
+    };
+
+    setSavedConsultations((prev) => [newConsultation, ...prev]);
+  }, [abhaId, opdToken, detectedSymptoms, mode, conversationHistory, transcript, scannedDocuments, extractedEntities, soapDraft]);
+
   const handleResetPatientSession = () => {
+    // If patient had an ABHA ID, save their consultation to their lifetime locker before resetting active screen
+    if (abhaId && (conversationHistory.length > 0 || transcript.length > 0)) {
+      handleSaveCurrentConsultationToLocker();
+    }
+
     setPatientName('Rajesh Kumar');
     setPatientAge(45);
     setPatientGender('Male');
@@ -376,6 +753,9 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setCurrentQuestion(0);
     setDashavidhaStep(1);
     setIsDraftLocked(false);
+    setTranscript('');
+    setTranscriptLines([]);
+    setConversationHistory([]);
     setExtractedEntities(initialExtractedEntities);
     setDashavidhaDraft(initialDashavidhaParams);
     setSoapDraft(initialSoapDraft);
@@ -417,6 +797,11 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         socratesStep,
         dashavidhaStep,
         scannedDocuments,
+        patientDocuments,
+        uploadPatientDocument: handleUploadPatientDocument,
+        deletePatientDocument: handleDeletePatientDocument,
+        savedConsultations,
+        saveCurrentConsultationToLocker: handleSaveCurrentConsultationToLocker,
         extractedEntities,
         labValues,
         soapDraft,
@@ -431,6 +816,19 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         purgeStatus,
         purgeTimestamp,
         patientQueue,
+        isMedGemmaOnline,
+        medgemmaEndpoint,
+        resolveDiscrepancyWithAi: handleResolveDiscrepancyWithAi,
+        synthesizeSoapWithAi: handleSynthesizeSoapWithAi,
+        // Conversational Brain
+        conversationHistory,
+        isAiThinking,
+        detectedSymptoms,
+        emergencyContext,
+        aiGeneratedQuestion,
+        intakeComplete,
+        handleAiDrivenIntakeTurn,
+        clearConversationHistory: handleClearConversationHistory,
         setLanguage,
         setMode,
         setPatientName,

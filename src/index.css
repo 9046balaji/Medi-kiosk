@@ -123,3 +123,50 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   PRINT STYLES: OPD Token Slip & Thermal Kiosk Card
+   ───────────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    margin: 6mm;
+    size: auto;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  header,
+  footer,
+  aside,
+  nav,
+  .no-print,
+  button,
+  .print-hide {
+    display: none !important;
+  }
+
+  /* Printable OPD token slip card */
+  .opd-token-card-print {
+    position: static !important;
+    width: 100% !important;
+    max-width: 440px !important;
+    margin: 0 auto !important;
+    padding: 16px !important;
+    border: 2px solid #000000 !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    page-break-inside: avoid;
+  }
+
+  .opd-token-card-print * {
+    color: #000000 !important;
+    border-color: #333333 !important;
+  }
+}

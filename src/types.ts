@@ -32,6 +32,19 @@ export interface ScannedDocument {
   timestamp: string;
 }
 
+export interface PatientLockerDocument {
+  id: string;
+  title: string;
+  category: 'Prescription' | 'Lab Report' | 'Discharge Summary' | 'Scan / X-Ray' | 'Ayush Treatment';
+  date: string;
+  fileDataUrl?: string;
+  fileName: string;
+  fileSize: string;
+  uploadedBy: 'patient_kiosk' | 'abha_sync' | 'doctor_portal';
+  ocrExtractedMeds?: string[];
+  notes?: string;
+}
+
 export interface ExtractedEntity {
   id: string;
   drugName: string;
@@ -95,6 +108,61 @@ export interface DashavidhaParameter {
   };
 }
 
+// ── MedGemma Conversational Brain Types ──────────────────────────────────────
+
+export interface ConversationTurn {
+  speaker: 'patient' | 'ai';
+  text: string;              // Original text (patient's language or AI English)
+  translatedText?: string;   // English translation (for patient turns)
+  timestamp: number;
+  turnIndex: number;
+}
+
+export interface DetectedSymptom {
+  symptom: string;
+  confidence: number;
+  socratesField?: string;    // Which SOCRATES dimension this maps to
+  dashavidhaField?: string;  // Which Dashavidha param this maps to
+}
+
+export interface EmergencyContext {
+  suspected_condition: string;
+  immediate_actions: string[];
+  clinical_summary: string;
+  detected_keywords: string[];
+  risk_level: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+  model_source: string;
+}
+
+export interface MedGemmaIntakeResponse {
+  next_question: string;
+  next_question_translated?: string;
+  detected_symptoms: DetectedSymptom[];
+  soap_partial: Partial<SoapDraft>;
+  dashavidha_update?: Record<string, string>;
+  emergency_flag: boolean;
+  intake_complete: boolean;
+  model_source: string;
+  latency_ms: number;
+}
+
+export interface PatientSavedConsultation {
+  id: string;
+  visitDate: string;
+  opdToken: string;
+  chiefComplaint: string;
+  mode: ClinicalMode;
+  conversationHistory: ConversationTurn[];
+  scannedDocuments: ScannedDocument[];
+  extractedEntities: ExtractedEntity[];
+  soapSummary: SoapDraft;
+  dashavidhaSummary?: Record<string, string>;
+  attendingDoctor: string;
+  assignedRoom: string;
+  abhaId: string;
+  status: 'completed' | 'in_progress';
+}
+
 export interface PatientQueueItem {
   token: string;
   name: string;
@@ -155,7 +223,30 @@ export interface MediKioskState {
   
   // Queue (for nurse/doctor views)
   patientQueue: PatientQueueItem[];
-  
+
+  // MedGemma Colab Integration
+  isMedGemmaOnline?: boolean;
+  medgemmaEndpoint?: string;
+  resolveDiscrepancyWithAi?: (index: number) => Promise<void>;
+  synthesizeSoapWithAi?: () => Promise<void>;
+
+  // MedGemma Conversational Brain State
+  conversationHistory: ConversationTurn[];
+  isAiThinking: boolean;
+  detectedSymptoms: DetectedSymptom[];
+  emergencyContext: EmergencyContext | null;
+  aiGeneratedQuestion: string;
+  intakeComplete: boolean;
+  handleAiDrivenIntakeTurn?: (transcript: string, translatedTranscript: string) => Promise<void>;
+  clearConversationHistory?: () => void;
+
+  // Patient Health Locker & Document Vault
+  patientDocuments: PatientLockerDocument[];
+  uploadPatientDocument: (doc: Omit<PatientLockerDocument, 'id' | 'date'>) => void;
+  deletePatientDocument: (id: string) => void;
+  savedConsultations: PatientSavedConsultation[];
+  saveCurrentConsultationToLocker: () => void;
+
   // Actions
   setLanguage: (lang: Language) => void;
   setMode: (mode: ClinicalMode) => void;
