@@ -1,47 +1,69 @@
-# MediKiosk MedGemma 1.5 Clinical LLM Microservice
+# 🧠 MediKiosk MedGemma 2.1 Clinical LLM Microservice
+### Google MedGemma 1.5 / 2.1 — Clinical Reasoning & Multilingual Dialogue
 
-The **MediKiosk MedGemma Microservice** is a clinical LLM reasoning microservice running on **Port 8005** (or via Colab Ngrok GPU) that powers AI-driven patient intake dialogue, SOAP note synthesis, discrepancy reconciliation, multimodal vision analysis, AYUSH herb-drug safety cross-checking, and FHIR R4 exportation.
+[![Version](https://img.shields.io/badge/Release-v2.1.0-emerald.svg)](https://github.com/balajikonda9046/Medi-kiosk)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
-
-## Code Refinements & Bug Fixes
-
-1. **Dynamic Remote Ngrok URL**:
-   - Replaced hardcoded Ngrok URLs with `MEDGEMMA_REMOTE_URL` environment variables (`medgemma_engine.remote_url`).
-2. **Non-Blocking Asynchronous Execution (`httpx.AsyncClient`)**:
-   - Converted route handlers to `async def` using `httpx.AsyncClient` with a 45-second timeout, preventing FastAPI threadpool blocking during GPU model generation.
-3. **Multi-Stage Robust JSON Parser**:
-   - Implemented `_parse_json_robust()` to clean trailing commas, repair unquoted keys, and handle unescaped quotes in LLM responses.
-4. **Explicit Multilingual Prompt Translation**:
-   - Added target language instructions to prompts when `language` is not English (e.g. Hindi, Telugu, Tamil, Hinglish, Bengali, etc.).
+> **Enterprise Clinical AI Reasoning Microservice** running on **Port 8005** (or via Colab Ngrok GPU proxy).  
+> Powers adaptive SOCRATES patient intake, SOAP note synthesis, Chain-of-Verification (CoVe) auditing, AYUSH herb-drug safety checking, and NRCES-compliant HL7 FHIR R4 exportation.
 
 ---
 
-## Feature Roadmap & API Endpoints
+## 📦 What's in This Directory
 
-| Endpoint | Method | Feature & Clinical Impact |
-| --- | --- | --- |
-| `POST /api/analyze-vision` | `POST` | **Multimodal Vision Analysis**: Accepts Base64 image inputs (X-rays, skin lesions, lab panels) and extracts lab metrics (HbA1c, eGFR, Glucose) and visual diagnostic impressions. |
-| `POST /api/herb-drug-check` | `POST` | **Herb-Drug & AYUSH Safety Cross-Checker**: Verifies active allopathic prescriptions against AYUSH formulations (e.g. Warfarin + Ginkgo bleeding risk) to prevent adverse interactions. |
-| `POST /api/export-fhir` | `POST` | **FHIR R4 Resource Exporter**: Converts SOAP notes into HL7 FHIR R4 compliant JSON bundles (`Patient`, `Condition`, `Observation`, `MedicationStatement`). |
-| `POST /api/patient-translation` | `POST` | **Plain-Language Patient Translator**: Translates complex medical jargon into simple, patient-friendly summaries. |
-| `POST /api/cove-reasoning` | `POST` | **Chain-of-Verification (CoVe)**: Self-correction 4-step prompt loop (Draft -> Verification Questions -> Fact Checking -> Audited Verdict). |
-| `WS /ws/intake-stream` | `WS` | **WebSocket Streaming Intake**: Streams MedGemma token responses incrementally for real-time kiosk speech output. |
-
----
-
-## Quick Start
-
-### 1. Local Run
-```bash
-cd backend/medikiosk-medgemma
-pip install -r requirements.txt
-python main.py
 ```
-Server runs at `http://localhost:8005`.
-
-### 2. Google Colab GPU Deployment
-```bash
-python colab_medgemma_server.py --ngrok-token <YOUR_NGROK_AUTHTOKEN>
+backend/medikiosk-medgemma/
+├── main.py                     # FastAPI server — SOAP, CoVe, Vision, FHIR, /ws/intake-stream
+├── medgemma_engine.py          # Clinical LLM Engine — prompt engineering, JSON parser, 180s timeout
+├── colab_medgemma_server.py    # Google Colab GPU proxy server with Ngrok tunnel
+├── test_medgemma.py            # Unit test battery verifying SOAP generation & remote URL
+├── test_5_questions.py         # 5/5 Enterprise Clinical Evaluation Question Test Suite
+├── test_stream.py              # WebSocket streaming test
+├── requirements.txt            # Python dependencies
+└── models/                     # Cache directory for GGUF / HF weights
 ```
-Remote GPU proxy endpoint configured via `MEDGEMMA_REMOTE_URL`.
+
+---
+
+## 🚀 Version 2.1.0 Key Features & Enhancements
+
+1. **180-Second Colab GPU Timeout Resilience**:
+   - Upgraded HTTP timeouts to 180s in `medgemma_engine.py` with automatic retry logic to handle heavy Colab T4/A100 GPU generation loads.
+2. **WebSocket Real-Time Token Generator (`WS /ws/intake-stream`)**:
+   - Streams incremental LLM tokens chunk-by-chunk over WebSockets for instant kiosk speech output.
+3. **Chain-of-Verification (CoVe) Self-Correction Loop (`POST /api/cove-reasoning`)**:
+   - 4-stage audit pipeline:
+     1. Baseline Draft Generation
+     2. Verification Question Generation
+     3. Independent Fact-Checking
+     4. Final Audited & Corrected Verdict
+4. **5/5 Enterprise Clinical Evaluation Questions Passed**:
+   - Evaluated and verified across 5 complex medical diagnostic & triage scenarios (`test_5_questions.py`).
+5. **ABDM HL7 FHIR R4 Bundle Generator (`POST /api/export-fhir`)**:
+   - Converts clinical encounters into NRCES-compliant FHIR R4 bundles containing `Patient`, `Encounter`, `Condition`, `Observation`, and `MedicationStatement` resources with SNOMED CT and NAMASTE Ayush codings.
+
+---
+
+## 📡 API Reference
+
+Base URL: `http://localhost:8005` (or `MEDGEMMA_REMOTE_URL` Ngrok proxy)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Service health & GPU backend status |
+| `POST` | `/api/soap-synthesis` | Synthesize Allopathic SOAP note & Dashavidha assessment |
+| `POST` | `/api/cove-reasoning` | **Chain-of-Verification 4-Stage Self-Correction Audit** |
+| `POST` | `/api/analyze-vision` | Multimodal X-ray/Prescription image analysis |
+| `POST` | `/api/herb-drug-check` | AYUSH & Allopathic herb-drug contraindication checker |
+| `POST` | `/api/export-fhir` | **NRCES-Compliant HL7 FHIR R4 Bundle Exporter** |
+| `WS` | `/ws/intake-stream` | **Real-Time Token Streaming Endpoint** |
+
+---
+
+## 🧪 Enterprise Unit Test
+
+Run the 5/5 Clinical Evaluation test suite:
+
+```bash
+python backend/medikiosk-medgemma/test_5_questions.py
+```

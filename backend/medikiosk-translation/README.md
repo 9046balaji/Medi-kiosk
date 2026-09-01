@@ -1,114 +1,78 @@
-# 🏥 MediKiosk IndicTrans2 Translation Backend Microservice
+# 🌐 MediKiosk IndicTrans2 Translation Microservice 2.0
+### AI4Bharat IndicTrans2 FP16 — 22-Language Neural Translation
 
-An ultra-fast, high-throughput AI translation backend designed for rural & urban Indian hospital OPD kiosks and clinical workstations. Powered by AI4Bharat's `indictrans2-en-indic-dist-200M` Transformer model, FastAPI, PyTorch FP16/INT8 precision, and micro-batch queueing.
+[![Version](https://img.shields.io/badge/Release-v2.0.0-emerald.svg)](https://github.com/balajikonda9046/Medi-kiosk)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
-
-## 🌟 Key Features
-
-- **22 Scheduled Indic Languages**: Supports Hindi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam, Punjabi, Odia, Assamese, Urdu, Sanskrit, Nepali, Manipuri, Bodo, Santhali, Dogri, Kashmiri, Konkani, Maithili, and Sindhi.
-- **FastAPI Micro-Batch Server**: Asynchronous HTTP endpoint with sub-15ms queue window.
-- **Zero-Latency In-Memory LRU Cache**: 0.0ms hit latency for pre-compiled UI dictionary strings.
-- **PyTorch FP16 Acceleration**: Reduced GPU/CPU VRAM footprint with FP16/INT8 weight quantization.
-- **ABDM & DPDP Act 2023 Compliant**: Zero-retention ephemeral RAM purge after session transmission.
+> **Enterprise Neural Machine Translation Engine** for 22 scheduled Indian languages and English.  
+> Powered by AI4Bharat's `indictrans2-en-indic-dist-200M` Transformer model, PyTorch FP16 CUDA acceleration, and FastAPI.  
+> Features **Medical Lexicon Protection**, **Air-Gapped Offline Loading**, **Bounded OrderedDict LRU Caching**, and **120s Idle VRAM Eviction**.
 
 ---
 
-## 🚀 Quick Start
-
-### 1. Prerequisites
-- Python 3.10 or 3.11
-- Conda or standard `venv`
-- PyTorch 2.0+
-
-### 2. Environment Setup (Conda)
-```bash
-# Activate Conda environment
-conda activate attendance
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 3. Run FastAPI Backend Server
-```bash
-# Start FastAPI server on port 8000
-python main.py
-```
-The server will run at: `http://localhost:8000`
-
----
-
-## 🐳 Docker Deployment
-
-You can run the microservice using Docker or Docker Compose:
-
-```bash
-# Build and run container
-docker compose up -d --build
-
-# View server logs
-docker compose logs -f
-```
-
----
-
-## 📡 API Endpoints Reference
-
-### 1. Health Check
-`GET /api/health`
-- **Response**: `{"status": "ok", "service": "MediKiosk IndicTrans2 Microservice"}`
-
-### 2. Supported Languages List
-`GET /api/languages`
-- **Response**: Returns JSON list of all 22 supported Indic languages and FLORES-200 codes.
-
-### 3. Single Text Translation
-`POST /api/translate`
-- **Request Body**:
-```json
-{
-  "text": "Welcome to AIIMS OPD Registration Kiosk",
-  "src_lang": "eng_Latn",
-  "tgt_lang": "hin_Deva"
-}
-```
-- **Response**:
-```json
-{
-  "success": true,
-  "src_lang": "eng_Latn",
-  "tgt_lang": "hin_Deva",
-  "translations": ["एम्स ओपीडी पंजीकरण कियोस्क में आपका स्वागत है"],
-  "model_used": "ai4bharat/indictrans2-en-indic-dist-200M"
-}
-```
-
-### 4. High-Throughput Batch Translation
-`POST /api/batch-translate`
-- **Request Body**:
-```json
-{
-  "texts": [
-    "Patient Name",
-    "Blood Pressure",
-    "Chief Complaint"
-  ],
-  "src_lang": "eng_Latn",
-  "tgt_lang": "tam_Taml"
-}
-```
-
----
-
-## 📂 Project Architecture
+## 📦 What's in This Directory
 
 ```
 backend/medikiosk-translation/
-├── main.py              # FastAPI server entry point & route definitions
-├── translator.py        # IndicTrans2 PyTorch model loader & micro-batcher
+├── main.py              # FastAPI server — translate, batch-translate, translate-html
+├── translator.py        # IndicTrans2 engine — thread-safe, Medical Lexicon Protection, bounded LRU
+├── test_translation.py  # Enterprise unit test battery verifying offline load, lexicon protection
 ├── requirements.txt     # Python dependencies
 ├── Dockerfile           # Multi-stage production container image
 ├── docker-compose.yml   # Container orchestration config
-└── start.bat            # Quick launch script for Windows environments
+└── models/
+    └── indictrans2-en-indic-dist-200M/   # Local FP16 model weights & tokenizers (~1.1GB)
+```
+
+---
+
+## 🚀 Version 2.0.0 Upgrades & Architectural Enhancements
+
+1. **Thread-Safe Initialization Lock**:
+   - `initialize()` uses `with self._lock:` entry guards to prevent concurrent HTTP requests from launching dual model loads and crashing with CUDA Out Of Memory (OOM).
+2. **Air-Gapped Local Offline Loading**:
+   - Loads tokenizers directly from `local_model_dir` with `local_files_only=True`, eliminating 401 Client Errors from gated HuggingFace online endpoints during hospital network disconnections.
+3. **Medical Lexicon Protection Engine (`protect_medical_lexicon`)**:
+   - Masks clinical dosages (`40mg`, `500mg`), active drug names (`Pantoprazole`, `Avipattikar Churna`), and vitals (`BP 120/80`, `SpO2 98%`) with placeholder tokens (`[MED_PROT_N]`) prior to translation and restores them cleanly afterwards.
+4. **Bounded `OrderedDict` LRU Cache**:
+   - Replaced unbounded dictionary with `OrderedDict` capped at 10,000 items to prevent RAM growth under continuous kiosk operation.
+5. **Configurable 120s Idle VRAM Timeout**:
+   - Automatically unloads model weights from VRAM after 120s of inactivity (`TRANSLATION_IDLE_TIMEOUT`).
+
+---
+
+## 📡 API Reference
+
+Base URL: `http://localhost:8000`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Service health status |
+| `GET` | `/api/languages` | Supported 22 language FLORES codes |
+| `POST` | `/api/translate` | Single sentence translation |
+| `POST` | `/api/batch-translate` | Batch array translation with sub-15ms queueing |
+| `POST` | `/api/translate-html` | DOM preservation text node HTML translator |
+| `POST` | `/api/unload` | Immediately free GPU VRAM |
+
+---
+
+## 🧪 Enterprise Unit Test
+
+Run the translation test battery:
+
+```bash
+python backend/medikiosk-translation/test_translation.py
+```
+
+Output:
+```
+=================================================================================
+ 🌐 MEDIKIOSK INDICTRANS2 NEURAL MODEL LOAD & INFERENCE TEST                    
+=================================================================================
+INFO:IndicTranslator:[IndicTrans2 2.0] Initializing model from 'models/indictrans2-en-indic-dist-200M' on device: cuda
+INFO:IndicTranslator:[IndicTrans2 2.0] ✅ Model & IndicProcessor loaded successfully on cuda!
+  Input Text  : 'Welcome to MediKiosk hospital intake kiosk. Please select your language.'
+  Neural Output: 'मीडियोकियोस्क अस्पताल के प्रवेश कियोस्क में आपका स्वागत है। कृपया अपनी भाषा चुनें।'
+  Latency     : 836.54 ms
+  ✓ PASS: IndicTrans2 FP16 Neural Model is fully loaded and inferencing cleanly on GPU!
 ```
