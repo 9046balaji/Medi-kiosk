@@ -10,7 +10,8 @@ import {
   RefreshCw,
   ShieldCheck,
   Smartphone,
-  Video
+  Video,
+  AlertCircle
 } from 'lucide-react';
 
 export const QrScannerScreen: React.FC = () => {
@@ -19,27 +20,48 @@ export const QrScannerScreen: React.FC = () => {
 
   const [isScanning, setIsScanning] = useState<boolean>(true);
   const [scannedSuccess, setScannedSuccess] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
+    let active = true;
+
     const startCamera = async () => {
+      setCameraError(null);
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        let stream: MediaStream | null = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false
+          });
+        } catch (e) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          videoRef.current.play().catch((err) => console.warn('Play error:', err));
         }
       } catch (err) {
-        console.warn('Camera stream permission error:', err);
+        console.warn('Camera permission or device error:', err);
+        setCameraError('Camera access not detected. You can tap "Simulate QR Scan" below to proceed.');
       }
     };
 
     startCamera();
 
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      active = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
@@ -51,7 +73,7 @@ export const QrScannerScreen: React.FC = () => {
     state.setOpdToken('MK-1042');
     setTimeout(() => {
       navigate('/intake');
-    }, 1200);
+    }, 1000);
   };
 
   return (
@@ -82,6 +104,14 @@ export const QrScannerScreen: React.FC = () => {
           </p>
         </div>
 
+        {/* Camera Alert if no permission */}
+        {cameraError && (
+          <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start gap-3 text-xs text-amber-900">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="font-bold">{cameraError}</div>
+          </div>
+        )}
+
         {/* Camera Viewport with Scanner Target Box */}
         <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-xl space-y-6 text-center">
           
@@ -91,6 +121,7 @@ export const QrScannerScreen: React.FC = () => {
               ref={videoRef}
               autoPlay
               playsInline
+              muted
               className="w-full h-full object-cover rounded-2xl"
             />
 
@@ -110,7 +141,7 @@ export const QrScannerScreen: React.FC = () => {
 
           <button
             onClick={handleSimulateQrScan}
-            className="w-full py-4 bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl transition-all shadow-md shadow-teal-600/30 flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-4 bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl transition-all shadow-md shadow-teal-600/30 flex items-center justify-center gap-2 cursor-pointer hover:scale-102"
           >
             <QrCode className="w-5 h-5" />
             <span><T text="Simulate QR Code Scan Detection" /></span>
