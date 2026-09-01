@@ -5,7 +5,7 @@ import { T } from '../../context/TranslationContext';
 export const Footer: React.FC<{ isDark?: boolean }> = ({ isDark = false }) => {
   return (
     <footer
-      className={`border-t py-4 px-4 sm:px-6 transition-colors text-xs ${
+      className={`border-t py-4 px-4 sm:px-6 transition-colors text-xs print:hidden ${
         isDark
           ? 'bg-slate-950 border-slate-800/80 text-slate-400'
           : 'bg-slate-50 border-slate-200 text-slate-600'
