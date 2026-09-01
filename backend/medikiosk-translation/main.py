@@ -71,6 +71,7 @@ def read_root():
         "cache_entries": len(translator_instance.cache)
     }
 
+@app.get("/health")
 @app.get("/api/health")
 def health_check():
     return {
@@ -116,7 +117,7 @@ def translate_text(request: TranslationRequest):
             tgt_lang=request.tgt_lang,
             use_beam_search=bool(request.use_beam_search)
         )
-        translator_instance.reset_idle_timer(15.0)
+        translator_instance.reset_idle_timer(120.0)
         return TranslationResponse(
             success=True,
             src_lang=request.src_lang,
@@ -140,7 +141,7 @@ def translate_html_endpoint(request: HtmlTranslationRequest):
             tgt_lang=request.tgt_lang,
             use_beam_search=bool(request.use_beam_search)
         )
-        translator_instance.reset_idle_timer(15.0)
+        translator_instance.reset_idle_timer(120.0)
         return HtmlTranslationResponse(
             success=True,
             src_lang=request.src_lang,
