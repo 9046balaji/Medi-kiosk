@@ -1,3 +1,6 @@
+export { WelcomeAnimationScreen } from './welcome/WelcomeAnimationScreen';
+export { KioskWelcomePage } from './welcome/KioskWelcomePage';
+export { ThreeMedicalHologram } from './welcome/ThreeMedicalHologram';
 export { AbhaAuthScreen } from './auth/AbhaAuthScreen';
 export { QrScannerScreen } from './auth/QrScannerScreen';
 export { ReturningPatientScreen } from './auth/ReturningPatientScreen';
@@ -8,3 +11,4 @@ export { DocScannerScreen } from './scanner/DocScannerScreen';
 export { OcrResultsScreen } from './scanner/OcrResultsScreen';
 export { PatientReceiptScreen } from './receipt/PatientReceiptScreen';
 export { DegradedModeScreen } from './receipt/DegradedModeScreen';
+
