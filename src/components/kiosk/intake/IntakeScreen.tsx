@@ -6,11 +6,14 @@ import { RedFlagModal } from './RedFlagModal';
 import { speakText, stopSpeech } from '../../../lib/speechUtils';
 import { transcribeAudio, checkAsrHealth, ASRResult, ASRHealthResult } from '../../../lib/asrApi';
 import { translateText } from '../../../lib/translationApi';
+import { checkEmergencyTriage } from '../../../lib/emergencyApi';
 import { getFloresCode } from '../../../lib/languageMap';
+import { playNeuralTts, stopNeuralTts } from '../../../lib/ttsApi';
 import {
   Mic, MicOff, Volume2, Sparkles, AlertTriangle, CheckCircle2,
   ArrowRight, Stethoscope, MessageSquare, Zap, Radio, Cpu,
-  Wifi, WifiOff, RefreshCw, Loader2
+  Wifi, WifiOff, RefreshCw, Loader2, Brain, Tag, HeartHandshake,
+  HelpCircle, Eye, EyeOff, VolumeX
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -26,26 +29,28 @@ interface ChatMessage {
   latency_ms?: number;
   decoder?: string;
   isLoading?: boolean;
-  isError?: boolean;       // backend offline or server error
-  isSilent?: boolean;     // audio was genuinely silent
+  isError?: boolean;
+  isSilent?: boolean;
 }
 
 type RecordingState = 'idle' | 'recording' | 'processing';
 type AsrMode = 'ctc' | 'rnnt';
 
 // ---------------------------------------------------------------------------
-// SOCRATES AI question sequence
+// 1-Tap Quick Symptom Chips (Default in English, translated dynamically via <T />)
 // ---------------------------------------------------------------------------
-const SOCRATES_QUESTIONS: Record<string, string> = {
-  S: 'Hello. Please describe the exact location and nature of your discomfort or pain.',
-  O: 'When did this symptom begin? Was the onset sudden or gradual?',
-  C: 'How would you describe the character of the pain — sharp, dull, burning, pressure?',
-  R: 'Does the pain radiate or spread to any other part of your body?',
-  A: 'Is there anything that makes the pain better or worse?',
-  T: 'On a scale of 1 to 10, how severe is your pain right now? How has it changed over time?',
-  E: 'Are there any other symptoms accompanying this — nausea, fever, breathlessness?',
-  S2: 'How is this symptom affecting your daily routine, sleep, or appetite?',
-};
+const QUICK_SYMPTOM_CHIPS = [
+  { icon: '🫀', text: 'Severe chest pain or pressure', category: 'cardiac' },
+  { icon: '🤢', text: 'Stomach burning, acidity or pain', category: 'gi' },
+  { icon: '🌡️', text: 'High fever and chills', category: 'fever' },
+  { icon: '🦵', text: 'Joint and knee pain while walking', category: 'ortho' },
+  { icon: '🤧', text: 'Persistent cough and breathing difficulty', category: 'resp' },
+  { icon: '🤕', text: 'Severe headache and dizziness', category: 'neuro' },
+  { icon: '🩸', text: 'Routine diabetes and blood pressure checkup', category: 'general' },
+  { icon: '🌿', text: 'Ayurvedic consultation and weakness', category: 'ayush' }
+];
+
+const FIRST_QUESTION = 'Hello! Please describe the exact location and nature of your discomfort or pain.';
 
 const SOCRATES_SEQUENCE = ['S', 'O', 'C', 'R', 'A', 'T', 'E', 'S2'];
 
@@ -67,6 +72,17 @@ export const IntakeScreen: React.FC = () => {
     searchParams.get('mode') === 'ayurvedic' || state.mode === 'ayurvedic';
   const showRedFlagPreset = searchParams.get('redflag') === 'true';
 
+  // Pull conversational brain state from context
+  const {
+    isAiThinking,
+    handleAiDrivenIntakeTurn,
+    detectedSymptoms,
+    emergencyContext,
+    aiGeneratedQuestion,
+    intakeComplete,
+    clearConversationHistory,
+  } = state;
+
   // --- Core state ---
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [asrMode, setAsrMode] = useState<AsrMode>('ctc');
@@ -78,6 +94,8 @@ export const IntakeScreen: React.FC = () => {
   const [avgLatency, setAvgLatency] = useState(0);
   const [latencyCount, setLatencyCount] = useState(0);
   const [waveformActive, setWaveformActive] = useState(false);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+  const [isSpeakingAudio, setIsSpeakingAudio] = useState(false);
 
   // --- Refs ---
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -93,8 +111,8 @@ export const IntakeScreen: React.FC = () => {
 
   const isEnglish = state.language === 'english';
 
-  // --- Messages ---
-  const firstQuestion = SOCRATES_QUESTIONS['S'];
+  // --- Messages: first question is instant (no MedGemma wait) ---
+  const firstQuestion = FIRST_QUESTION;
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'msg-init',
@@ -124,6 +142,61 @@ export const IntakeScreen: React.FC = () => {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Play Voice Prompt via Neural TTS
+  // ---------------------------------------------------------------------------
+  const handlePlayMessageAudio = (text: string) => {
+    setIsSpeakingAudio(true);
+    playNeuralTts(text, state.language).finally(() => {
+      setIsSpeakingAudio(false);
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // Quick 1-Tap Symptom Chip Click Handler
+  // ---------------------------------------------------------------------------
+  const handleSelectQuickChip = (chip: typeof QUICK_SYMPTOM_CHIPS[0]) => {
+    const symptomText = chip.text;
+    
+    // Add patient message
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `msg-chip-${Date.now()}`,
+        sender: 'patient',
+        text: `${chip.icon} ${symptomText}`,
+        translation: symptomText,
+        confidence: 99,
+        timestamp: now(),
+      },
+    ]);
+
+    // Send to MedGemma conversational brain
+    if (handleAiDrivenIntakeTurn) {
+      handleAiDrivenIntakeTurn(symptomText, symptomText).then(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-ai-${Date.now()}`,
+            sender: 'ai',
+            text: state.aiGeneratedQuestion || FIRST_QUESTION,
+            translation: state.aiGeneratedQuestion || FIRST_QUESTION,
+            confidence: 99,
+            timestamp: now(),
+          },
+        ]);
+        handlePlayMessageAudio(state.aiGeneratedQuestion || FIRST_QUESTION);
+      });
+    }
+
+    // Emergency triage check
+    checkEmergencyTriage(symptomText, state.language).then((triageRes) => {
+      if (triageRes.is_emergency) {
+        setShowRedFlagModal(true);
+      }
+    });
+  };
+
+  // ---------------------------------------------------------------------------
   // Waveform Visualizer
   // ---------------------------------------------------------------------------
   const drawWaveform = useCallback(() => {
@@ -149,8 +222,8 @@ export const IntakeScreen: React.FC = () => {
       for (let i = 0; i < bufferLength; i++) {
         const barHeight = (dataArray[i] / 255) * canvas.height * 0.9;
         const gradient = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - barHeight);
-        gradient.addColorStop(0, '#0d9488');
-        gradient.addColorStop(1, '#14b8a6');
+        gradient.addColorStop(0, '#059669');
+        gradient.addColorStop(1, '#10b981');
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.roundRect(x, canvas.height - barHeight, Math.max(barWidth - 1, 1), barHeight, 2);
@@ -165,7 +238,6 @@ export const IntakeScreen: React.FC = () => {
     if (waveformActive) drawWaveform();
     else {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      // Clear canvas
       const canvas = canvasRef.current;
       if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
     }
@@ -173,7 +245,6 @@ export const IntakeScreen: React.FC = () => {
 
   // ---------------------------------------------------------------------------
   // Recording: start — PCM via Web Audio API → 16kHz mono WAV
-  // Avoids audio/webm which requires ffmpeg to decode on Windows backend
   // ---------------------------------------------------------------------------
   const pcmChunksRef = useRef<Float32Array[]>([]);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
@@ -212,7 +283,6 @@ export const IntakeScreen: React.FC = () => {
       analyserRef.current.fftSize = 64;
       source.connect(analyserRef.current);
 
-      // Capture raw PCM via ScriptProcessor
       const processor = ctx.createScriptProcessor(4096, 1, 1);
       scriptProcessorRef.current = processor;
       pcmChunksRef.current = [];
@@ -222,14 +292,12 @@ export const IntakeScreen: React.FC = () => {
       source.connect(processor);
       processor.connect(ctx.destination);
 
-      // MediaRecorder only used for stream lifecycle (onstop trigger)
       const mr = new MediaRecorder(stream);
       mediaRecorderRef.current = mr;
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         processor.disconnect();
         processor.onaudioprocess = null;
-        // Flatten PCM chunks → WAV
         const totalLen = pcmChunksRef.current.reduce((s, c) => s + c.length, 0);
         const merged = new Float32Array(totalLen);
         let off = 0;
@@ -248,7 +316,7 @@ export const IntakeScreen: React.FC = () => {
   };
 
   // ---------------------------------------------------------------------------
-  // English: browser SpeechRecognition API (no backend needed)
+  // English SpeechRecognition
   // ---------------------------------------------------------------------------
   const startEnglishRecognition = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -283,7 +351,7 @@ export const IntakeScreen: React.FC = () => {
           id: `msg-en-${Date.now()}`,
           sender: 'patient',
           text: transcript || '(nothing heard)',
-          translation: '',   // English → no translation needed
+          translation: '',
           confidence,
           timestamp: nowStr,
           latency_ms: latency,
@@ -292,27 +360,27 @@ export const IntakeScreen: React.FC = () => {
       ]);
 
       if (transcript) {
-        const nextIdx = Math.min(socratesIndex + 1, SOCRATES_SEQUENCE.length - 1);
-        setSocratesIndex(nextIdx);
-        const nextKey = SOCRATES_SEQUENCE[nextIdx];
-        setTimeout(() => {
-          setMessages((prev) => [...prev, {
-            id: `msg-ai-${Date.now()}`, sender: 'ai',
-            text: SOCRATES_QUESTIONS[nextKey],
-            translation: SOCRATES_QUESTIONS[nextKey],
-            confidence: 99, timestamp: now(),
-          }]);
-        }, 400);
+        if (handleAiDrivenIntakeTurn) {
+          handleAiDrivenIntakeTurn(transcript, transcript).then(() => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `msg-ai-${Date.now()}`,
+                sender: 'ai',
+                text: state.aiGeneratedQuestion || FIRST_QUESTION,
+                translation: state.aiGeneratedQuestion || FIRST_QUESTION,
+                confidence: 99,
+                timestamp: now(),
+              },
+            ]);
+            handlePlayMessageAudio(state.aiGeneratedQuestion || FIRST_QUESTION);
+          });
+        }
       }
     };
 
     recognition.onerror = (event: any) => {
       console.warn('SpeechRecognition error:', event.error);
-      setMessages((prev) => [...prev, {
-        id: `msg-err-${Date.now()}`, sender: 'patient',
-        text: `⚠️ Recognition error: ${event.error}. Try again.`,
-        translation: '', timestamp: now(), isError: true,
-      }]);
       setRecordingState('idle');
     };
 
@@ -344,7 +412,6 @@ export const IntakeScreen: React.FC = () => {
     const recDuration = (Date.now() - recordingStartRef.current) / 1000;
     setTotalDuration((p) => p + recDuration);
 
-    // Add loading bubble
     const loadingId = `msg-loading-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
@@ -359,18 +426,11 @@ export const IntakeScreen: React.FC = () => {
     ]);
 
     const result: ASRResult = await transcribeAudio(blob, state.language, asrMode);
-
-    // ── Classify the result into 3 distinct cases ──────────────────────────
-    // 1. Backend offline / network error  → model_name === 'offline'
-    // 2. Audio was genuinely silent       → success=true, is_silent=true, transcript=''
-    // 3. Real transcript (success)        → success=true, transcript non-empty
-    // 4. Backend returned an error        → success=false, model_name !== 'offline'
     const isBackendOffline = result.model_name === 'offline';
-    const isTrulySilent   = result.success && result.is_silent;
-    const isServerError   = !result.success && !isBackendOffline;
-    const transcript      = result.transcript?.trim() || '';
+    const isTrulySilent = result.success && result.is_silent;
+    const isServerError = !result.success && !isBackendOffline;
+    const transcript = result.transcript?.trim() || '';
 
-    // Update latency rolling average (only on real responses)
     if (result.latency_ms > 0 && !isBackendOffline) {
       setAvgLatency((prev) => {
         const total = prev * latencyCount + result.latency_ms;
@@ -379,7 +439,6 @@ export const IntakeScreen: React.FC = () => {
       setLatencyCount((p) => p + 1);
     }
 
-    // Translate transcript → English (only when we have real text)
     let translation = transcript;
     if (transcript && state.language !== 'english' && !isBackendOffline) {
       try {
@@ -390,25 +449,23 @@ export const IntakeScreen: React.FC = () => {
       }
     }
 
-    // Build the display text based on case
     let displayText = transcript;
     let displayConfidence: number | undefined = result.success ? 94 : undefined;
     let isError = false;
 
     if (isBackendOffline) {
-      displayText = '⚠️ ASR server offline — start the Python backend on port 8001';
+      displayText = '⚠️ Speech recording unavailable — please try again or select from the quick touch buttons below';
       displayConfidence = undefined;
       isError = true;
     } else if (isTrulySilent) {
       displayText = '🔇 Silence detected — please speak clearly into the microphone';
       displayConfidence = undefined;
     } else if (isServerError) {
-      displayText = `❌ Transcription error — ${result.transcript || 'unknown error'}`;
+      displayText = `❌ Audio error — ${result.transcript || 'please try speaking again'}`;
       displayConfidence = undefined;
       isError = true;
     }
 
-    // Replace loading bubble
     setMessages((prev) =>
       prev.map((m) =>
         m.id === loadingId
@@ -427,26 +484,22 @@ export const IntakeScreen: React.FC = () => {
       )
     );
 
-    // Advance SOCRATES only on a real successful transcript
     if (transcript && result.success && !isBackendOffline) {
-      const nextIdx = Math.min(socratesIndex + 1, SOCRATES_SEQUENCE.length - 1);
-      setSocratesIndex(nextIdx);
-      const nextKey = SOCRATES_SEQUENCE[nextIdx];
-      const nextQuestion = SOCRATES_QUESTIONS[nextKey];
+      if (handleAiDrivenIntakeTurn) {
+        handleAiDrivenIntakeTurn(transcript, translation || transcript).then(() => {
+          handlePlayMessageAudio(state.aiGeneratedQuestion || FIRST_QUESTION);
+        }).catch(console.error);
+      }
 
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-ai-${Date.now()}`,
-            sender: 'ai',
-            text: nextQuestion,
-            translation: nextQuestion,
-            confidence: 99,
-            timestamp: now(),
-          },
-        ]);
-      }, 400);
+      if (state.emergencyContext) {
+        setShowRedFlagModal(true);
+      } else {
+        checkEmergencyTriage(transcript, state.language).then((triageRes) => {
+          if (triageRes.is_emergency) {
+            setShowRedFlagModal(true);
+          }
+        });
+      }
     }
 
     setRecordingState('idle');
@@ -454,86 +507,63 @@ export const IntakeScreen: React.FC = () => {
 
   const handleToggleRecording = () => {
     if (isEnglish) {
-      // English: use browser SpeechRecognition API
       if (recordingState === 'idle') startEnglishRecognition();
       else if (recordingState === 'recording') stopEnglishRecognition();
     } else {
-      // Indian languages: use IndicConformer 600M backend
       if (recordingState === 'idle') startRecording();
       else if (recordingState === 'recording') stopRecording();
     }
   };
 
   // ---------------------------------------------------------------------------
-  // Health badge
-  // ---------------------------------------------------------------------------
-  const healthBadge = () => {
-    if (!asrHealth) return null;
-    const isOnline = asrHealth.status === 'ok' && asrHealth.model_loaded;
-    const isLoading = asrHealth.status === 'initializing';
-    return (
-      <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-        isOnline ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-        isLoading ? 'bg-amber-50 text-amber-700 border-amber-200' :
-        'bg-red-50 text-red-700 border-red-200'
-      }`}>
-        {isOnline ? <Wifi className="w-3 h-3" /> : isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <WifiOff className="w-3 h-3" />}
-        ASR {isOnline ? 'ONLINE' : isLoading ? 'LOADING' : 'OFFLINE'}
-        {isOnline && <span className="font-mono text-emerald-500">· {asrHealth.device.toUpperCase()}</span>}
-      </div>
-    );
-  };
-
-  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-[calc(100vh-65px)] bg-slate-50 text-slate-900 p-4 sm:p-6 space-y-5">
-      {showRedFlagModal && <RedFlagModal onClose={() => setShowRedFlagModal(false)} />}
+    <div className="min-h-[calc(100vh-65px)] bg-slate-50 text-slate-900 p-3 sm:p-6 space-y-4">
+      {showRedFlagModal && (
+        <RedFlagModal
+          onClose={() => setShowRedFlagModal(false)}
+          onEscalateToNurse={() => {
+            setShowRedFlagModal(false);
+            navigate('/emergency');
+          }}
+          emergencyContext={emergencyContext}
+        />
+      )}
 
-      <div className="max-w-6xl mx-auto space-y-5">
+      <div className="max-w-6xl mx-auto space-y-4">
 
-        {/* ─── Header ─── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-teal-600 text-white flex items-center justify-center shadow-lg shadow-teal-600/30">
-              <Mic className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900">
-                  <T text="Patient Voice ASR Intake" />
-                </h1>
-                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                  isAyurvedicMode
-                    ? 'bg-amber-100 text-amber-900 border-amber-300'
-                    : 'bg-teal-100 text-teal-800 border-teal-200'
-                }`}>
-                  {isAyurvedicMode
-                    ? <T text="Dashavidha Ayush Mode" />
-                    : <T text="Allopathic SOCRATES Mode" />}
-                </span>
-                {healthBadge()}
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                <T text="Speak naturally in your preferred Indic language — AI4Bharat IndicConformer 600M transcribes in real-time." />
-              </p>
-            </div>
+        {/* ─── 3-Step Breadcrumb Bar ─── */}
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border-2 border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2 font-black text-xs sm:text-sm">
+            <span className="px-3 py-1 bg-emerald-600 text-white rounded-full flex items-center gap-1.5 shadow-sm">
+              <Mic className="w-3.5 h-3.5" />
+              <span><T text="Step 1: Speak Symptoms" /></span>
+            </span>
+            <span className="text-slate-400">➔</span>
+            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full font-bold">
+              <T text="Step 2: Scan Paper" /> 📄
+            </span>
+            <span className="text-slate-400">➔</span>
+            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full font-bold">
+              <T text="Step 3: Get Token Slip" /> 🎟️
+            </span>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowRedFlagModal(true)}
-              className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
             >
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-              <T text="Trigger Red-Flag" />
+              {showTechnicalDetails ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <span>{showTechnicalDetails ? <T text="Simple Mode" /> : <T text="Telemetry Details" />}</span>
             </button>
+
             <button
               onClick={() => navigate(isAyurvedicMode ? '/scan?mode=ayurvedic' : '/scan')}
-              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-teal-600/30 flex items-center gap-1.5 cursor-pointer"
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-black rounded-xl transition-all shadow-md shadow-emerald-600/30 flex items-center gap-2 cursor-pointer hover:scale-102"
             >
-              <span><T text="Proceed to Scanner" /></span>
+              <span><T text="Proceed to Scanner" /> 📄</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -542,143 +572,151 @@ export const IntakeScreen: React.FC = () => {
         {/* ─── Main Columns ─── */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-          {/* ── LEFT: Recording Terminal ── */}
+          {/* ── LEFT: Giant Microphone Terminal ── */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-xl space-y-5 text-center">
-
-              {/* Status label */}
-              <div className="space-y-1">
-                <span className="text-xs font-bold uppercase tracking-wider text-teal-800 flex items-center justify-center gap-1.5">
-                  <Radio className={`w-4 h-4 ${recordingState === 'recording' ? 'text-red-600 animate-pulse' : 'text-teal-600'}`} />
-                  <T text="IndicConformer ASR Voice Terminal" />
-                </span>
-                <p className="text-[11px] text-slate-500">
-                  <T text="Tap the mic to record. The AI transcribes your speech instantly in any Indian language." />
-                </p>
+            <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-xl space-y-5 text-center relative overflow-hidden">
+              
+              {/* Spoken prompt banner */}
+              <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-950 text-xs sm:text-sm font-bold flex items-center justify-between gap-2 shadow-inner">
+                <div className="flex items-center gap-2 text-left">
+                  <Volume2 className="w-5 h-5 text-emerald-600 shrink-0 animate-pulse" />
+                  <span><T text="Tap the mic and speak your health issue" /></span>
+                </div>
+                <button
+                  onClick={() => handlePlayMessageAudio('Hello! Please tap the microphone button and describe your symptoms.')}
+                  className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[11px] font-black shrink-0 hover:bg-emerald-700 cursor-pointer"
+                >
+                  <T text="Listen" /> 🔊
+                </button>
               </div>
 
-              {/* ── Mic Button ── */}
-              <div className="relative flex items-center justify-center py-3">
-                {/* Pulse rings when recording */}
+              {/* ── GIANT PULSING MICROPHONE BUTTON ── */}
+              <div className="relative flex items-center justify-center py-4">
+                {/* Visual pulse waves */}
                 {recordingState === 'recording' && (
                   <>
-                    <span className="absolute w-36 h-36 rounded-full bg-red-400/20 animate-ping" />
-                    <span className="absolute w-32 h-32 rounded-full bg-red-400/15 animate-ping animation-delay-200" />
+                    <span className="absolute w-48 h-48 rounded-full bg-red-500/20 animate-ping" />
+                    <span className="absolute w-40 h-40 rounded-full bg-red-500/30 animate-pulse" />
                   </>
                 )}
+                {isAiThinking && (
+                  <span className="absolute w-44 h-44 rounded-full bg-violet-500/20 animate-pulse" />
+                )}
+
                 <button
                   onClick={handleToggleRecording}
-                  disabled={recordingState === 'processing'}
-                  className={`relative w-28 h-28 rounded-full flex flex-col items-center justify-center transition-all shadow-2xl cursor-pointer disabled:cursor-not-allowed ${
+                  disabled={recordingState === 'processing' || !!isAiThinking}
+                  className={`relative w-36 h-36 rounded-full flex flex-col items-center justify-center transition-all shadow-2xl cursor-pointer disabled:cursor-not-allowed ${
                     recordingState === 'recording'
-                      ? 'bg-red-600 hover:bg-red-700 text-white ring-8 ring-red-200 scale-105'
-                      : recordingState === 'processing'
-                      ? 'bg-slate-400 text-white ring-8 ring-slate-200'
-                      : 'bg-teal-600 hover:bg-teal-700 text-white ring-8 ring-teal-100 hover:scale-105'
+                      ? 'bg-red-600 hover:bg-red-700 text-white ring-12 ring-red-200 scale-105'
+                      : recordingState === 'processing' || isAiThinking
+                      ? 'bg-violet-600 text-white ring-12 ring-violet-200'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white ring-12 ring-emerald-100 hover:scale-105'
                   }`}
                 >
                   {recordingState === 'recording' ? (
                     <>
-                      <MicOff className="w-10 h-10 mb-1" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider"><T text="Stop" /></span>
+                      <MicOff className="w-12 h-12 mb-1.5 animate-bounce" />
+                      <span className="text-xs font-black uppercase tracking-wider"><T text="Stop Speaking" /></span>
                     </>
-                  ) : recordingState === 'processing' ? (
+                  ) : recordingState === 'processing' || isAiThinking ? (
                     <>
-                      <Loader2 className="w-10 h-10 mb-1 animate-spin" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider"><T text="Processing…" /></span>
+                      <Loader2 className="w-12 h-12 mb-1.5 animate-spin" />
+                      <span className="text-xs font-black uppercase tracking-wider">
+                        {isAiThinking ? <T text="Thinking…" /> : <T text="Analyzing…" />}
+                      </span>
                     </>
                   ) : (
                     <>
-                      <Mic className="w-10 h-10 mb-1" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider"><T text="Tap to Speak" /></span>
+                      <Mic className="w-14 h-14 mb-1" />
+                      <span className="text-xs font-black uppercase tracking-wider"><T text="Tap to Speak" /></span>
                     </>
                   )}
                 </button>
               </div>
 
-              {/* ── Waveform Canvas ── */}
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
-                  <span><T text="Audio Frequency Spectrum" /></span>
-                  <span className={`font-mono ${recordingState === 'recording' ? 'text-red-600' : 'text-slate-400'}`}>
-                    {recordingState === 'recording' ? '● RECORDING LIVE' : recordingState === 'processing' ? '⏳ PROCESSING' : 'STANDBY'}
+              {/* Status Hint */}
+              <div className="font-bold text-xs sm:text-sm">
+                {recordingState === 'recording' ? (
+                  <span className="text-red-600 font-black animate-pulse flex items-center justify-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
+                    <T text="Listening... please speak clearly into the mic" />
+                  </span>
+                ) : isAiThinking ? (
+                  <span className="text-violet-700 font-black flex items-center justify-center gap-1.5">
+                    <Brain className="w-4 h-4 animate-spin text-violet-600" />
+                    <T text="MedGemma AI is formulating the next question..." />
+                  </span>
+                ) : (
+                  <span className="text-slate-600">
+                    <T text="Tap the mic button above and speak your symptom" />
+                  </span>
+                )}
+              </div>
+
+              {/* ── Quick Symptom Presets ── */}
+              <div className="pt-2 space-y-2 text-left border-t border-slate-100">
+                <div className="flex items-center justify-between text-xs font-black text-slate-800">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span><T text="Or choose from common symptoms:" /></span>
                   </span>
                 </div>
-                <canvas
-                  ref={canvasRef}
-                  width={400}
-                  height={48}
-                  className="w-full h-12 bg-white rounded-xl border border-slate-200 shadow-inner"
-                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  {QUICK_SYMPTOM_CHIPS.map((chip, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSelectQuickChip(chip)}
+                      className="p-2.5 rounded-xl border border-slate-200 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/60 text-left transition-all cursor-pointer flex items-center gap-2 group"
+                    >
+                      <span className="text-lg shrink-0 group-hover:scale-125 transition-transform">{chip.icon}</span>
+                      <span className="text-[11px] font-bold text-slate-800 group-hover:text-emerald-950 leading-tight">
+                        <T text={chip.text} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* ── Decoder Mode Toggle ── */}
-              <div className="flex items-center justify-center gap-2 text-xs">
-                <span className="text-slate-500 font-semibold"><T text="Decoder:" /></span>
-                <button
-                  onClick={() => setAsrMode('ctc')}
-                  className={`px-3 py-1 rounded-lg font-bold border transition-all ${
-                    asrMode === 'ctc'
-                      ? 'bg-teal-600 text-white border-teal-600'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-teal-400'
-                  }`}
-                >
-                  <Zap className="w-3 h-3 inline mr-1" />CTC ~25ms
-                </button>
-                <button
-                  onClick={() => setAsrMode('rnnt')}
-                  className={`px-3 py-1 rounded-lg font-bold border transition-all ${
-                    asrMode === 'rnnt'
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400'
-                  }`}
-                >
-                  <Cpu className="w-3 h-3 inline mr-1" />RNNT ~65ms
-                </button>
-              </div>
-
-              {/* Recorded Audio Player */}
-              {recordedAudioUrl && (
-                <div className="p-3 bg-teal-50 rounded-2xl border border-teal-200 space-y-1.5 text-left">
-                  <div className="text-[10px] font-bold text-teal-700 uppercase tracking-wider">
-                    <T text="Last Recording Preview" />
+              {/* Optional Technical Details (Visible in Telemetry Mode) */}
+              {showTechnicalDetails && (
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-left">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                    <span>Waveform Spectrum & Decoder</span>
+                    <span className="font-mono text-emerald-600">IndicConformer 600M</span>
                   </div>
-                  <audio src={recordedAudioUrl} controls className="w-full h-8" />
+                  <canvas ref={canvasRef} width={300} height={40} className="w-full h-10 bg-white rounded-lg border" />
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      onClick={() => setAsrMode('ctc')}
+                      className={`flex-1 py-1 rounded text-[10px] font-bold border ${asrMode === 'ctc' ? 'bg-teal-600 text-white' : 'bg-white'}`}
+                    >
+                      CTC (25ms)
+                    </button>
+                    <button
+                      onClick={() => setAsrMode('rnnt')}
+                      className={`flex-1 py-1 rounded text-[10px] font-bold border ${asrMode === 'rnnt' ? 'bg-indigo-600 text-white' : 'bg-white'}`}
+                    >
+                      RNNT (65ms)
+                    </button>
+                  </div>
                 </div>
               )}
-
-              {/* ── Live Stats ── */}
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="bg-slate-50 rounded-xl p-2 border border-slate-200">
-                  <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Lang</div>
-                  <div className="font-black text-slate-800 truncate capitalize">{state.language}</div>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-2 border border-slate-200">
-                  <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Avg Latency</div>
-                  <div className="font-black text-teal-700 font-mono">{avgLatency > 0 ? `${avgLatency.toFixed(0)}ms` : '—'}</div>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-2 border border-slate-200">
-                  <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Audio Time</div>
-                  <div className="font-black text-slate-800 font-mono">{totalDuration.toFixed(1)}s</div>
-                </div>
-              </div>
 
             </div>
           </div>
 
-          {/* ── RIGHT: Conversation Stream ── */}
+          {/* ── RIGHT: Doctor AI Conversation Stream ── */}
           <div className="lg:col-span-7">
-            <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-xl h-full flex flex-col">
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200 shadow-xl h-full flex flex-col justify-between space-y-4">
 
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-teal-600" />
-                  <T text="Real-Time ASR Transcript & SOCRATES Stream" />
-                </h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
-                    {messages.length - 1} exchanges
-                  </span>
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    <Stethoscope className="w-5 h-5 text-emerald-600" />
+                    <span><T text="Clinical Consultation Conversation" /></span>
+                  </h3>
                   <button
                     onClick={() => setMessages([{
                       id: 'msg-init-reset',
@@ -688,114 +726,90 @@ export const IntakeScreen: React.FC = () => {
                       confidence: 99,
                       timestamp: now(),
                     }])}
-                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 border border-slate-200 cursor-pointer transition-all"
+                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 border border-slate-200 cursor-pointer"
                     title="Reset conversation"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
 
-              {/* SOCRATES progress bar */}
-              <div className="flex gap-1 mb-4">
-                {SOCRATES_SEQUENCE.map((key, i) => (
-                  <div
-                    key={key}
-                    title={`${key.replace('S2', 'S')} — ${SOCRATES_QUESTIONS[key].slice(0, 40)}…`}
-                    className={`flex-1 h-1.5 rounded-full transition-all ${
-                      i < socratesIndex ? 'bg-teal-500' :
-                      i === socratesIndex ? 'bg-teal-300 animate-pulse' : 'bg-slate-200'
-                    }`}
-                  />
-                ))}
-              </div>
-              <div className="text-[10px] font-bold text-slate-400 mb-3">
-                SOCRATES {socratesIndex + 1}/8 — {SOCRATES_SEQUENCE[socratesIndex].replace('S2', 'S')}
-              </div>
+                {/* Messages List */}
+                <div className="space-y-3 overflow-y-auto pr-1 max-h-[460px]">
+                  {messages.map((msg) => {
+                    const isAi = msg.sender === 'ai';
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`p-4 rounded-2xl border transition-all space-y-2 ${
+                          isAi
+                            ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950 mr-6'
+                            : 'bg-white border-slate-200 text-slate-900 ml-6 shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider font-black ${
+                              isAi ? 'bg-emerald-700 text-white' : 'bg-slate-700 text-white'
+                            }`}>
+                              {isAi ? <T text="MediKiosk AI Doctor" /> : <T text="You (Patient)" />}
+                            </span>
+                            <span className="text-slate-400 text-[10px]">{msg.timestamp}</span>
+                          </div>
 
-              {/* Messages */}
-              <div className="flex-1 space-y-3 overflow-y-auto pr-1 max-h-[480px]">
-                {messages.map((msg) => {
-                  // Determine bubble style based on state
-                  const bubbleClass = msg.isError
-                    ? 'bg-red-50 border-red-200 text-red-900 ml-8 mr-0'
-                    : msg.isSilent
-                    ? 'bg-amber-50 border-amber-200 text-amber-900 ml-8 mr-0'
-                    : msg.sender === 'ai'
-                    ? 'bg-teal-50/70 border-teal-200 text-teal-950 ml-0 mr-8'
-                    : 'bg-slate-50 border-slate-200 text-slate-900 ml-8 mr-0';
+                          {/* Sound button to listen */}
+                          <button
+                            onClick={() => handlePlayMessageAudio(msg.text)}
+                            className="p-1.5 rounded-lg bg-white hover:bg-emerald-100 text-emerald-700 border border-emerald-200 cursor-pointer shadow-sm flex items-center gap-1 text-[11px] font-bold"
+                            title="Listen"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span><T text="Listen" /></span>
+                          </button>
+                        </div>
 
-                  return (
-                  <div
-                    key={msg.id}
-                    className={`p-4 rounded-2xl border transition-all space-y-2 ${bubbleClass} ${msg.isLoading ? 'opacity-60' : ''}`}
-                  >
-                    {/* Sender row */}
-                    <div className="flex items-center justify-between text-xs font-bold">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${
-                          msg.isError ? 'bg-red-700 text-white'
-                          : msg.isSilent ? 'bg-amber-600 text-white'
-                          : msg.sender === 'ai' ? 'bg-teal-700 text-white' : 'bg-slate-700 text-white'
-                        }`}>
-                          {msg.isError ? 'Error' : msg.isSilent ? 'Silent' : msg.sender === 'ai' ? <T text="MediKiosk AI" /> : <T text="Patient" />}
-                        </span>
-                        <span className="text-slate-400 font-mono text-[10px]">{msg.timestamp}</span>
-                        {msg.latency_ms && msg.latency_ms > 0 && (
-                          <span className="text-[9px] font-mono text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
-                            {msg.decoder?.toUpperCase()} {msg.latency_ms.toFixed(0)}ms
-                          </span>
+                        <div className="text-sm sm:text-base font-bold leading-relaxed text-slate-900">
+                          {msg.isLoading ? (
+                            <div className="flex items-center gap-2 text-slate-500 font-normal">
+                              <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                              <span><T text="Processing your voice transcript..." /></span>
+                            </div>
+                          ) : (
+                            msg.text
+                          )}
+                        </div>
+
+                        {/* Translation (if applicable) */}
+                        {!msg.isLoading && msg.translation && msg.translation !== msg.text && (
+                          <div className="p-2 bg-white/80 rounded-xl border border-slate-200 text-xs font-mono text-slate-600">
+                            {msg.translation}
+                          </div>
                         )}
                       </div>
-                      {!msg.isLoading && !msg.isError && !msg.isSilent && (
-                        <button
-                          onClick={() => speakText(msg.text, state.language)}
-                          className="p-1 rounded bg-white hover:bg-slate-100 text-teal-700 border border-slate-200 cursor-pointer shadow-sm"
-                          title="Listen"
-                        >
-                          <Volume2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              </div>
 
-                    {/* Text */}
-                    {msg.isLoading ? (
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
-                        <Loader2 className="w-4 h-4 animate-spin text-teal-500" />
-                        <span><T text="Transcribing via IndicConformer 600M…" /></span>
-                      </div>
-                    ) : (
-                      <div className={`text-sm font-semibold leading-relaxed ${
-                        msg.isError ? 'text-red-800' : msg.isSilent ? 'text-amber-800' : 'text-slate-900'
-                      }`}>{msg.text}</div>
-                    )}
-
-                    {/* Translation */}
-                    {!msg.isLoading && msg.translation && msg.translation !== msg.text && (
-                      <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs font-mono text-slate-700 space-y-0.5">
-                        <div className="text-[9px] font-bold text-slate-400 uppercase"><T text="English Translation" /></div>
-                        <div>{msg.translation}</div>
-                      </div>
-                    )}
-
-                    {/* Confidence */}
-                    {msg.confidence !== undefined && !msg.isLoading && (
-                      <div className="flex items-center gap-1 text-[10px]">
-                        <CheckCircle2 className="w-3 h-3 text-teal-500" />
-                        <span className="text-slate-400">
-                          {msg.confidence}% <T text="confidence" />
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
+              {/* Bottom Proceed Action Button */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div className="text-xs text-slate-500 font-bold">
+                  <T text="Finished describing symptoms? Proceed below ➔" />
+                </div>
+                <button
+                  onClick={() => navigate(isAyurvedicMode ? '/scan?mode=ayurvedic' : '/scan')}
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-xl transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer hover:scale-102"
+                >
+                  <span><T text="Scan Paper Prescriptions" /> ➔</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
 
             </div>
           </div>
+
         </div>
+
       </div>
     </div>
   );

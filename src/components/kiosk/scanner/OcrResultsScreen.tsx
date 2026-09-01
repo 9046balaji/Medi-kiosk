@@ -30,9 +30,20 @@ interface ExtractedMedication {
 
 export const OcrResultsScreen: React.FC = () => {
   const navigate = useNavigate();
+  const state = useMediKiosk();
 
   const [selectedDiscrepancyResolution, setSelectedDiscrepancyResolution] = useState<'voice' | 'ocr'>('ocr');
+  const [isAiResolving, setIsAiResolving] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState<boolean>(false);
+
+  const handleAiResolve = async () => {
+    setIsAiResolving(true);
+    if (state.resolveDiscrepancyWithAi) {
+      await state.resolveDiscrepancyWithAi(0);
+    }
+    setSelectedDiscrepancyResolution('ocr');
+    setIsAiResolving(false);
+  };
 
   const [medications, setMedications] = useState<ExtractedMedication[]>([
     {
@@ -124,7 +135,17 @@ export const OcrResultsScreen: React.FC = () => {
             <T text="Voice intake indicated 'Pantoprazole 40mg Twice Daily', whereas scanned paper prescription states 'Pantoprazole 40mg Once Daily (1-0-0) AC'." />
           </div>
 
-          <div className="flex items-center gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <button
+              onClick={handleAiResolve}
+              disabled={isAiResolving}
+              className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shadow-purple-700/30"
+              title="MedGemma Colab LLM Discrepancy Triangulation"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>{isAiResolving ? 'Resolving via MedGemma...' : '🤖 MedGemma AI Triangulate'}</span>
+            </button>
+
             <button
               onClick={() => setSelectedDiscrepancyResolution('ocr')}
               className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
