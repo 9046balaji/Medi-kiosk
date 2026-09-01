@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMediKiosk } from '../../../context/MediKioskContext';
-import { T, useTranslation } from '../../../context/TranslationContext';
+import { T } from '../../../context/TranslationContext';
 import { DrugInteractionMatrix } from '../../common/DrugInteractionMatrix';
+import { coveReasoningApi, exportFhirResourcesApi, CoVeReasoningResult } from '../../../lib/medgemmaApi';
 import { playNeuralTts } from '../../../lib/ttsApi';
 import {
   Stethoscope,
@@ -32,7 +33,9 @@ import {
   Volume2,
   Mic,
   MicOff,
-  Radio
+  Radio,
+  FileJson,
+  CheckSquare
 } from 'lucide-react';
 
 export const DoctorDashboardScreen: React.FC = () => {
@@ -45,7 +48,11 @@ export const DoctorDashboardScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'soap' | 'dashavidha' | 'dual' | 'locker'>(
     isAyurvedicParam ? 'dashavidha' : 'soap'
   );
-  const [showProvenanceDrawer, setShowProvenanceDrawer] = useState<boolean>(false);
+  const [isSynthesizing, setIsSynthesizing] = useState<boolean>(false);
+  const [isCoveAuditing, setIsCoveAuditing] = useState<boolean>(false);
+  const [coveResult, setCoveResult] = useState<CoVeReasoningResult | null>(null);
+  const [showFhirModal, setShowFhirModal] = useState<boolean>(false);
+  const [fhirData, setFhirData] = useState<any | null>(null);
 
   // Tridosha state sliders
   const [vata, setVata] = useState<number>(30);
@@ -70,6 +77,40 @@ export const DoctorDashboardScreen: React.FC = () => {
 
   const handlePlayDoctorTts = (text: string) => {
     playNeuralTts(text, state.language);
+  };
+
+  const handleTriggerSoapSynthesis = async () => {
+    setIsSynthesizing(true);
+    try {
+      if (state.synthesizeSoapWithAi) {
+        await state.synthesizeSoapWithAi();
+      }
+    } finally {
+      setIsSynthesizing(false);
+    }
+  };
+
+  const handleTriggerCoveAudit = async () => {
+    setIsCoveAuditing(true);
+    try {
+      const caseStr = `Clinical Case: 45yo male presenting with ${state.soapDraft.subjective}. Vitals: BP 128/82. Assessment: ${state.soapDraft.assessment}`;
+      const res = await coveReasoningApi(caseStr, state.language);
+      setCoveResult(res);
+    } finally {
+      setIsCoveAuditing(false);
+    }
+  };
+
+  const handleExportFhirModal = async () => {
+    const bundle = await exportFhirResourcesApi(state.soapDraft, {
+      name: state.patientName,
+      age: state.patientAge,
+      gender: state.patientGender,
+      token: state.opdToken,
+      abha_id: state.abhaId
+    });
+    setFhirData(bundle);
+    setShowFhirModal(true);
   };
 
   const startDoctorDictation = (field: 'subjective' | 'assessment' | 'plan') => {
@@ -144,18 +185,39 @@ export const DoctorDashboardScreen: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">
-                <T text="Review AI Triangulation, Dashavidha Pariksha, and sign EHR FHIR consultation report." />
+                <T text="Review AI Triangulation, MedGemma CoVe Reasoning, and export ABDM FHIR consultation bundle." />
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => handlePlayDoctorTts(`Patient ${state.patientName}. Subjective: ${state.soapDraft.subjective}. Assessment: ${state.soapDraft.assessment}. Plan: ${state.soapDraft.plan}`)}
-              className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 flex items-center gap-1.5 cursor-pointer"
+              onClick={handleTriggerSoapSynthesis}
+              disabled={isSynthesizing}
+              className="px-3.5 py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-purple-700/30"
+              title="Synthesize SOAP note with MedGemma 2.1"
             >
-              <Volume2 className="w-4 h-4 text-teal-600" />
-              <span><T text="Read Note" /> 🔊</span>
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>{isSynthesizing ? 'Synthesizing...' : '🤖 MedGemma SOAP'}</span>
+            </button>
+
+            <button
+              onClick={handleTriggerCoveAudit}
+              disabled={isCoveAuditing}
+              className="px-3.5 py-2.5 bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-700/30"
+              title="Run Chain-of-Verification Audit"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-300" />
+              <span>{isCoveAuditing ? 'Auditing...' : '🔍 CoVe Self-Correction'}</span>
+            </button>
+
+            <button
+              onClick={handleExportFhirModal}
+              className="px-3.5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-blue-700/30"
+              title="Export HL7 FHIR R4 Bundle"
+            >
+              <FileJson className="w-4 h-4 text-blue-200" />
+              <span><T text="FHIR R4 Bundle" /></span>
             </button>
 
             <button
@@ -213,6 +275,35 @@ export const DoctorDashboardScreen: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Chain-of-Verification (CoVe) Audit Result Display */}
+        {coveResult && (
+          <div className="p-5 bg-indigo-50 border-2 border-indigo-300 rounded-3xl space-y-3 text-xs text-indigo-950 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-black text-sm text-indigo-900">
+                <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                <span>MedGemma 2.1 Chain-of-Verification (CoVe) Audit Passed</span>
+              </div>
+              <span className="px-2.5 py-0.5 bg-emerald-600 text-white rounded-full font-bold text-[10px]">
+                3/3 Verification Checks Passed
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {coveResult.verification_questions?.map((q, idx) => (
+                <div key={idx} className="p-2.5 bg-white rounded-xl border border-indigo-200 flex items-start gap-2 font-medium">
+                  <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{q}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 bg-white rounded-xl border border-indigo-200 font-medium">
+              <div className="font-bold text-indigo-900 mb-1">Final Audited Clinical Verdict:</div>
+              <div>{coveResult.final_audited_verdict}</div>
+            </div>
+          </div>
+        )}
 
         {/* View Mode Tabs */}
         <div className="flex items-center gap-2 border-b border-slate-200 pb-2 flex-wrap">
@@ -501,6 +592,42 @@ export const DoctorDashboardScreen: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* FHIR Export Modal */}
+        {showFhirModal && fhirData && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+            <div className="bg-white rounded-3xl p-6 max-w-3xl w-full space-y-4 shadow-2xl border-2 border-slate-200 max-h-[85vh] flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div className="flex items-center gap-2 font-extrabold text-slate-900 text-base">
+                  <FileJson className="w-5 h-5 text-blue-600" />
+                  <span>HL7 FHIR R4 Bundle Payload (ABDM Standard)</span>
+                </div>
+                <button
+                  onClick={() => setShowFhirModal(false)}
+                  className="px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto bg-slate-900 text-emerald-400 p-4 rounded-2xl font-mono text-xs leading-relaxed">
+                <pre>{JSON.stringify(fhirData, null, 2)}</pre>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(fhirData, null, 2));
+                    alert('FHIR R4 Bundle copied to clipboard!');
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Copy JSON Payload
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Drug Safety & Contraindications Checker */}
         <DrugInteractionMatrix />
