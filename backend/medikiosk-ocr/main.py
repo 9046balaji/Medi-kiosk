@@ -12,8 +12,8 @@ from ocr_engine import ocr_engine
 
 app = FastAPI(
     title="MediKiosk Document & Prescription Vision OCR Service",
-    description="Florence-2-base Vision microservice for paper prescription OCR and medical entity extraction.",
-    version="1.0.0"
+    description="Florence-2-base Vision microservice for paper prescription OCR, OpenCV CLAHE/deskewing, bounding box UI highlights, and fuzzy drug normalization.",
+    version="2.0.0"
 )
 
 # CORS Middleware
@@ -34,21 +34,29 @@ class Base64ScanRequest(BaseModel):
 
 @app.get("/")
 def read_root():
+    port = int(os.environ.get("PORT", 8002))
     return {
         "service": "MediKiosk Document OCR Service",
         "status": "online",
         "model": "microsoft/Florence-2-base",
-        "port": 8003
+        "port": port,
+        "features": [
+            "opencv_clahe_deskewing",
+            "fuzzy_drug_normalization_rxnorm_cdsco_ayush",
+            "bounding_box_coordinates",
+            "handwriting_detection"
+        ]
     }
 
 @app.get("/health")
 @app.get("/api/health")
 def health_check():
+    import time
     return {
         "status": "ok",
         "device": ocr_engine.device,
         "model_loaded": ocr_engine.is_initialized and ocr_engine.model is not None,
-        "last_access_seconds_ago": round(ocr_engine.idle_timeout - (ocr_engine.last_access_time - ocr_engine.last_access_time), 1)
+        "last_access_seconds_ago": round(time.time() - ocr_engine.last_access_time, 1)
     }
 
 @app.post("/api/scan-document")
@@ -60,14 +68,13 @@ async def scan_document(
 ):
     """
     Accepts multipart/form-data upload or base64 image string.
-    Runs Florence-2-base vision OCR + Medical Entity Extraction.
+    Runs OpenCV CLAHE/deskewing + Florence-2-base vision OCR + Fuzzy Drug Normalization.
     """
     image_bytes = None
 
     if file:
         image_bytes = await file.read()
     elif image_base64:
-        # Strip data URL header if present (e.g. data:image/jpeg;base64,...)
         if "," in image_base64:
             image_base64 = image_base64.split(",")[1]
         try:
@@ -75,13 +82,13 @@ async def scan_document(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid Base64 image payload: {e}")
     else:
-        # Generate dummy 1x1 image bytes for testing if no file passed
         dummy_io = io.BytesIO()
         from PIL import Image
         Image.new("RGB", (640, 480), color=(255, 255, 255)).save(dummy_io, format="JPEG")
         image_bytes = dummy_io.getvalue()
 
-    loop = asyncio.get_event_loop()
+    # FIX: Replace deprecated get_event_loop() with get_running_loop()
+    loop = asyncio.get_running_loop()
     res = await loop.run_in_executor(
         executor, 
         ocr_engine.process_image, 
@@ -102,7 +109,8 @@ async def scan_document_json(payload: Base64ScanRequest):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid Base64 image payload: {e}")
 
-    loop = asyncio.get_event_loop()
+    # FIX: Replace deprecated get_event_loop() with get_running_loop()
+    loop = asyncio.get_running_loop()
     res = await loop.run_in_executor(
         executor, 
         ocr_engine.process_image, 
@@ -120,4 +128,5 @@ def unload_model():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8003)
+    port = int(os.environ.get("PORT", 8002))
+    uvicorn.run(app, host="0.0.0.0", port=port)

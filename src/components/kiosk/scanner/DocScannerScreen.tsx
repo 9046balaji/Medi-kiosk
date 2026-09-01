@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMediKiosk } from '../../../context/MediKioskContext';
 import { T } from '../../../context/TranslationContext';
-import { scanDocumentApi } from '../../../lib/ocrApi';
+import { scanDocumentApi, OcrScanResponse } from '../../../lib/ocrApi';
 import {
   Scan,
   FileText,
@@ -14,14 +14,11 @@ import {
   RefreshCw,
   Sparkles,
   FileSearch,
-  Video,
   VideoOff,
-  Mic,
   SkipForward,
-  HelpCircle,
-  Volume2,
   AlertCircle,
-  ImageIcon
+  ImageIcon,
+  AlertTriangle
 } from 'lucide-react';
 
 export const DocScannerScreen: React.FC = () => {
@@ -33,6 +30,7 @@ export const DocScannerScreen: React.FC = () => {
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [isWebcamActive, setIsWebcamActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [scanWarning, setScanWarning] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -61,16 +59,15 @@ export const DocScannerScreen: React.FC = () => {
   // Live Webcam Handler with multi-fallback constraints
   const startWebcam = async () => {
     setCameraError(null);
+    setScanWarning(null);
     try {
       let stream: MediaStream | null = null;
       try {
-        // Try rear/environment camera first
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false
         });
       } catch (firstErr) {
-        // Fallback to standard video camera (laptop webcam)
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
 
@@ -80,7 +77,7 @@ export const DocScannerScreen: React.FC = () => {
     } catch (err: any) {
       console.warn('Webcam start failed:', err);
       setCameraError(
-        'Camera permission was not granted or no webcam was detected. You can upload an image or use the demo sample prescription below.'
+        'Camera permission was not granted or no webcam was detected. You can upload an image file or click "Use Demo Sample Rx" below.'
       );
       setIsWebcamActive(false);
     }
@@ -98,17 +95,16 @@ export const DocScannerScreen: React.FC = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    
+
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
       setScannedImage(dataUrl);
       stopWebcam();
-      setIsScanning(true);
-      setTimeout(() => setIsScanning(false), 1200);
+      setScanWarning(null);
     }
   };
 
@@ -117,11 +113,10 @@ export const DocScannerScreen: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       stopWebcam();
+      setScanWarning(null);
       const reader = new FileReader();
       reader.onload = (event) => {
         setScannedImage(event.target?.result as string);
-        setIsScanning(true);
-        setTimeout(() => setIsScanning(false), 1200);
       };
       reader.readAsDataURL(file);
     }
@@ -130,22 +125,44 @@ export const DocScannerScreen: React.FC = () => {
   // Load High-Quality Sample Prescription for Instant Demo
   const handleLoadSamplePrescription = () => {
     stopWebcam();
+    setScanWarning(null);
     setScannedImage('https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=800&auto=format&fit=crop&q=80');
-    setIsScanning(true);
-    setTimeout(() => setIsScanning(false), 1000);
   };
 
   const handleAnalyzeAndProceed = async () => {
+    if (!scannedImage) return;
+
     setIsScanning(true);
+    setScanWarning(null);
+
     try {
-      if (scannedImage) {
-        await scanDocumentApi(scannedImage, docType, state.transcript || '');
+      const res: OcrScanResponse = await scanDocumentApi(scannedImage, docType, state.transcript || '');
+      
+      if (res.status === 'warning') {
+        setScanWarning(
+          res.message || 'Low image quality or unreadable document. Please adjust kiosk lighting, position paper closer to camera, or try our sample prescription.'
+        );
+        setIsScanning(false);
+        return;
       }
-    } catch (err) {
+
+      // Store in SessionStorage for OcrResultsScreen
+      sessionStorage.setItem('medikiosk_last_ocr_result', JSON.stringify(res));
+
+      // Add to Scanned Documents list in MediKioskContext
+      state.addScannedDocument({
+        id: `doc-${Date.now()}`,
+        thumbnail: scannedImage,
+        type: docType === 'prescription' ? 'Prescription' : docType === 'lab_report' ? 'Lab Report' : 'Discharge Summary',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+
+      navigate('/scan/results');
+    } catch (err: any) {
       console.warn('OCR processing error:', err);
+      navigate('/scan/results');
     } finally {
       setIsScanning(false);
-      navigate('/scan/results');
     }
   };
 
@@ -175,15 +192,13 @@ export const DocScannerScreen: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleSkipDirectToToken}
-              className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-            >
-              <SkipForward className="w-4 h-4 text-amber-700" />
-              <span><T text="No paper? Skip to Token" /> ➔</span>
-            </button>
-          </div>
+          <button
+            onClick={handleSkipDirectToToken}
+            className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            <SkipForward className="w-4 h-4 text-amber-700" />
+            <span><T text="No paper? Skip to Token" /> ➔</span>
+          </button>
         </div>
 
         {/* ── Header Title ── */}
@@ -192,21 +207,46 @@ export const DocScannerScreen: React.FC = () => {
             <T text="Scan Physical Paper Prescriptions & Lab Reports" />
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 font-medium">
-            <T text="Hold your prescription up to the camera or upload an image file for instant AI recognition." />
+            <T text="Hold your prescription up to the camera or upload an image file for OpenCV contrast enhancement and Florence-2 AI recognition." />
           </p>
         </div>
 
         {/* Scanner Viewport */}
         <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200 shadow-xl space-y-5">
-          
-          {/* Camera Alert / Error if blocked */}
+
+          {/* Camera Error Alert */}
           {cameraError && (
             <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start gap-3 text-xs text-amber-900">
               <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <div className="font-bold">{cameraError}</div>
                 <div className="text-amber-800">
-                  Tip: You can click <strong>"Use Demo Sample Rx"</strong> or <strong>"Upload Image"</strong> below to continue!
+                  Tip: Click <strong>"Use Demo Sample Rx"</strong> or <strong>"Upload Image File"</strong> below to test!
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Unreadable Document Warning Modal Alert */}
+          {scanWarning && (
+            <div className="p-4 bg-red-50 border-2 border-red-300 rounded-2xl flex items-start gap-3 text-xs text-red-950 animate-in fade-in">
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-extrabold text-sm text-red-900">Document Unreadable / Low Lighting Warning</div>
+                <div>{scanWarning}</div>
+                <div className="pt-1 flex gap-2">
+                  <button
+                    onClick={startWebcam}
+                    className="px-3 py-1 bg-red-600 text-white font-bold rounded-lg cursor-pointer text-[11px]"
+                  >
+                    Re-snap Photo
+                  </button>
+                  <button
+                    onClick={handleLoadSamplePrescription}
+                    className="px-3 py-1 bg-white border border-red-300 text-red-900 font-bold rounded-lg cursor-pointer text-[11px]"
+                  >
+                    Use Sample Rx
+                  </button>
                 </div>
               </div>
             </div>
@@ -214,7 +254,7 @@ export const DocScannerScreen: React.FC = () => {
 
           <div className="relative aspect-video max-w-2xl mx-auto bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800 flex items-center justify-center p-3">
             
-            {/* Live Video Feed (Rendered and toggled via CSS to maintain stable DOM ref) */}
+            {/* Live Video Feed */}
             <video
               ref={videoRef}
               autoPlay
@@ -245,27 +285,28 @@ export const DocScannerScreen: React.FC = () => {
               </div>
             )}
 
-            {/* Target Viewfinder overlay when camera active */}
+            {/* Target Viewfinder Overlay when camera active */}
             {isWebcamActive && (
               <div className="absolute inset-6 sm:inset-10 border-4 border-dashed border-emerald-400 rounded-2xl pointer-events-none flex items-center justify-center">
                 <div className="w-full h-0.5 bg-emerald-400 shadow-[0_0_15px_#34d399] animate-bounce" />
               </div>
             )}
 
-            {/* Laser Scanning Animation Overlay */}
+            {/* Scanning Animation Overlay */}
             {isScanning && (
-              <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-xs flex items-center justify-center">
+              <div className="absolute inset-0 bg-emerald-950/60 backdrop-blur-xs flex flex-col items-center justify-center space-y-3">
                 <div className="w-full h-1 bg-emerald-400 shadow-[0_0_15px_#34d399] animate-bounce" />
-                <span className="absolute bg-slate-950 text-emerald-300 px-4 py-2 rounded-xl text-xs font-mono font-bold border border-emerald-800">
-                  <T text="Florence-2 Vision OCR in progress..." />
-                </span>
+                <div className="bg-slate-950 text-emerald-300 px-5 py-2.5 rounded-xl text-xs font-mono font-bold border border-emerald-800 flex items-center gap-2 shadow-xl">
+                  <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+                  <span><T text="OpenCV CLAHE & Florence-2 Vision OCR processing..." /></span>
+                </div>
               </div>
             )}
 
             <canvas ref={canvasRef} className="hidden" />
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Control Buttons */}
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             
             <input
@@ -287,7 +328,7 @@ export const DocScannerScreen: React.FC = () => {
                 </button>
                 <button
                   onClick={stopWebcam}
-                  className="px-5 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-2xl transition-all cursor-pointer"
+                  className="px-5 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-2xl transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   <VideoOff className="w-4 h-4" />
                   <span><T text="Close Camera" /></span>
@@ -331,14 +372,6 @@ export const DocScannerScreen: React.FC = () => {
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
-
-            <button
-              onClick={handleSkipDirectToToken}
-              className="px-6 py-4 bg-amber-50 hover:bg-amber-100 text-amber-900 font-black text-xs sm:text-sm rounded-2xl transition-all border-2 border-amber-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-            >
-              <SkipForward className="w-4 h-4 text-amber-700" />
-              <span><T text="Skip to Token Slip" /> ➔</span>
-            </button>
 
           </div>
 

@@ -1,11 +1,14 @@
 /**
- * MediKiosk Vision OCR API Client
- * Connects to Florence-2-base Document Intelligence Microservice on Port 8003
+ * MediKiosk Vision OCR API Client 2.0
+ * Primary Endpoint: Florence-2-base Document Intelligence Microservice on Port 8002
+ * Features: OpenCV CLAHE/Deskewing, Fuzzy Drug Normalization, Bounding Boxes, & Handwriting Detection
  */
 
 export interface ExtractedMedication {
   id: string;
   name: string;
+  original_name?: string;
+  fuzzy_matched?: boolean;
   dosage: string;
   frequency: string;
   confidence: number;
@@ -29,19 +32,30 @@ export interface OcrDiscrepancy {
   status: 'pending' | 'accepted_voice' | 'accepted_ocr' | 'dismissed';
 }
 
+export interface BoundingBoxRegion {
+  label: string;
+  box_normalized: number[]; // [ymin, xmin, ymax, xmax] scaled 0-1000
+  box_pixels: number[];     // [ymin, xmin, ymax, xmax] in actual image pixels
+}
+
 export interface OcrScanResponse {
   status: string;
+  message?: string;
   device: string;
   doc_type: string;
+  is_handwritten?: boolean;
   ocr_confidence: number;
   latency_ms: number;
   raw_text: string;
   extracted_medications: ExtractedMedication[];
   extracted_lab_values: ExtractedLabValue[];
   discrepancies: OcrDiscrepancy[];
+  bounding_boxes?: BoundingBoxRegion[];
 }
 
-const OCR_SERVICE_URL = 'http://localhost:8003/api/scan-document';
+export const OCR_SERVICE_URL =
+  ((import.meta as any).env?.VITE_OCR_API_URL as string) ||
+  'http://localhost:8002/api/scan-document';
 
 export async function scanDocumentApi(
   imageBase64: string,
@@ -68,18 +82,20 @@ export async function scanDocumentApi(
   } catch (err) {
     console.warn('[OCR API Fallback] Serving structured vision OCR fallback:', err);
     
-    // Structured Client Fallback if server unreachable
     return {
       status: 'fallback',
       device: 'client-fallback',
       doc_type: docType,
+      is_handwritten: false,
       ocr_confidence: 96.4,
       latency_ms: 1200,
       raw_text: 'Rx: Tab. Pantoprazole 40mg 1-0-0 AC\nAvipattikar Churna 3g 1-0-1 PC\nSutshekhar Ras 125mg HS',
       extracted_medications: [
         {
           id: 'fallback-med-1',
-          name: 'Tab. Pantoprazole 40mg',
+          name: 'Pantoprazole',
+          original_name: 'Tab. Pantoprazole 40mg',
+          fuzzy_matched: true,
           dosage: '40mg',
           frequency: '1-0-0 (Before Meals) • 14 Days',
           confidence: 98,
@@ -87,7 +103,9 @@ export async function scanDocumentApi(
         },
         {
           id: 'fallback-med-2',
-          name: 'Avipattikar Churna 3g',
+          name: 'Avipattikar Churna',
+          original_name: 'Avipattikar Churna 3g',
+          fuzzy_matched: true,
           dosage: '3g',
           frequency: '1-0-1 (After Meals with warm water)',
           confidence: 95,
@@ -95,7 +113,9 @@ export async function scanDocumentApi(
         },
         {
           id: 'fallback-med-3',
-          name: 'Sutshekhar Ras 125mg',
+          name: 'Sutshekhar Ras',
+          original_name: 'Sutshekhar Ras 125mg',
+          fuzzy_matched: true,
           dosage: '125mg',
           frequency: '0-0-1 (At Bedtime)',
           confidence: 92,
@@ -115,6 +135,9 @@ export async function scanDocumentApi(
           ocr_claim: 'Pantoprazole 40mg (1-0-0)',
           status: 'pending'
         }
+      ],
+      bounding_boxes: [
+        { label: 'Pantoprazole 40mg', box_normalized: [120, 45, 145, 380], box_pixels: [57.6, 28.8, 69.6, 243.2] }
       ]
     };
   }

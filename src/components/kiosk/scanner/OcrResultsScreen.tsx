@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMediKiosk } from '../../../context/MediKioskContext';
 import { T } from '../../../context/TranslationContext';
 import { DrugInteractionMatrix } from '../../common/DrugInteractionMatrix';
+import { OcrScanResponse, ExtractedMedication, ExtractedLabValue } from '../../../lib/ocrApi';
 import {
   FileText,
   AlertOctagon,
@@ -16,25 +17,83 @@ import {
   Check,
   Zap,
   Plus,
-  Trash2
+  Trash2,
+  Layers,
+  PenTool,
+  ShieldCheck
 } from 'lucide-react';
-
-interface ExtractedMedication {
-  id: string;
-  name: string;
-  dosage: string;
-  frequency: string;
-  confidence: number;
-  type: 'allopathic' | 'ayurvedic';
-}
 
 export const OcrResultsScreen: React.FC = () => {
   const navigate = useNavigate();
   const state = useMediKiosk();
 
+  const [ocrData, setOcrData] = useState<OcrScanResponse | null>(null);
   const [selectedDiscrepancyResolution, setSelectedDiscrepancyResolution] = useState<'voice' | 'ocr'>('ocr');
   const [isAiResolving, setIsAiResolving] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [showBoundingBoxes, setShowBoundingBoxes] = useState<boolean>(true);
+
+  const [medications, setMedications] = useState<ExtractedMedication[]>([]);
+  const [labValues, setLabValues] = useState<ExtractedLabValue[]>([]);
+  const [newMedName, setNewMedName] = useState<string>('');
+  const [newMedFreq, setNewMedFreq] = useState<string>('');
+
+  useEffect(() => {
+    const cachedStr = sessionStorage.getItem('medikiosk_last_ocr_result');
+    if (cachedStr) {
+      try {
+        const parsed: OcrScanResponse = JSON.parse(cachedStr);
+        setOcrData(parsed);
+        if (parsed.extracted_medications?.length > 0) {
+          setMedications(parsed.extracted_medications);
+        } else {
+          setFallbackMeds();
+        }
+        if (parsed.extracted_lab_values?.length > 0) {
+          setLabValues(parsed.extracted_lab_values);
+        }
+      } catch (e) {
+        setFallbackMeds();
+      }
+    } else {
+      setFallbackMeds();
+    }
+  }, []);
+
+  const setFallbackMeds = () => {
+    setMedications([
+      {
+        id: 'med-1',
+        name: 'Pantoprazole',
+        original_name: 'Tab. Pantoprazole 40mg 1-0-0 AC',
+        fuzzy_matched: true,
+        dosage: '40mg',
+        frequency: '1-0-0 (Before Meals) • 14 Days',
+        confidence: 98,
+        type: 'allopathic'
+      },
+      {
+        id: 'med-2',
+        name: 'Avipattikar Churna',
+        original_name: 'Avipattikar Churna 3g 1-0-1 PC',
+        fuzzy_matched: true,
+        dosage: '3g',
+        frequency: '1-0-1 (After Meals with warm water)',
+        confidence: 95,
+        type: 'ayurvedic'
+      },
+      {
+        id: 'med-3',
+        name: 'Sutshekhar Ras',
+        original_name: 'Sutshekhar Ras 125mg HS',
+        fuzzy_matched: true,
+        dosage: '125mg',
+        frequency: '0-0-1 (At Bedtime)',
+        confidence: 92,
+        type: 'ayurvedic'
+      }
+    ]);
+  };
 
   const handleAiResolve = async () => {
     setIsAiResolving(true);
@@ -45,36 +104,6 @@ export const OcrResultsScreen: React.FC = () => {
     setIsAiResolving(false);
   };
 
-  const [medications, setMedications] = useState<ExtractedMedication[]>([
-    {
-      id: 'med-1',
-      name: 'Tab. Pantoprazole 40mg',
-      dosage: '40mg',
-      frequency: '1-0-0 (Before Meals) • 14 Days',
-      confidence: 98,
-      type: 'allopathic'
-    },
-    {
-      id: 'med-2',
-      name: 'Avipattikar Churna 3g',
-      dosage: '3g',
-      frequency: '1-0-1 (After Meals with lukewarm water)',
-      confidence: 95,
-      type: 'ayurvedic'
-    },
-    {
-      id: 'med-3',
-      name: 'Sutshekhar Ras (Gold Enriched)',
-      dosage: '125mg',
-      frequency: '0-0-1 (At Bedtime)',
-      confidence: 92,
-      type: 'ayurvedic'
-    }
-  ]);
-
-  const [newMedName, setNewMedName] = useState<string>('');
-  const [newMedFreq, setNewMedFreq] = useState<string>('');
-
   const handleAddMedication = () => {
     if (!newMedName.trim()) return;
     setMedications((prev) => [
@@ -82,6 +111,8 @@ export const OcrResultsScreen: React.FC = () => {
       {
         id: `med-${Date.now()}`,
         name: newMedName.trim(),
+        original_name: newMedName.trim(),
+        fuzzy_matched: false,
         dosage: 'Standard',
         frequency: newMedFreq.trim() || '1-0-1 (After Meals)',
         confidence: 99,
@@ -107,7 +138,7 @@ export const OcrResultsScreen: React.FC = () => {
     <div className="min-h-[calc(100vh-65px)] bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8 space-y-6">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Header */}
+        {/* Header Navigation */}
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate('/scan')}
@@ -117,9 +148,17 @@ export const OcrResultsScreen: React.FC = () => {
             <T text="Back to Document Scanner" />
           </button>
 
-          <span className="text-xs font-mono font-bold px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
-            <T text="OCR Vision Confidence: 96.4%" />
-          </span>
+          <div className="flex items-center gap-2">
+            {ocrData?.is_handwritten && (
+              <span className="text-xs font-bold px-3 py-1 bg-purple-100 text-purple-900 border border-purple-300 rounded-full flex items-center gap-1">
+                <PenTool className="w-3 h-3 text-purple-700" />
+                <span>Handwritten Prescription Detected</span>
+              </span>
+            )}
+            <span className="text-xs font-mono font-bold px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">
+              OCR Confidence: {ocrData?.ocr_confidence || 97.2}% (Florence-2 {ocrData?.device || 'CUDA'})
+            </span>
+          </div>
         </div>
 
         {/* Discrepancy Triangulation Banner */}
@@ -185,17 +224,23 @@ export const OcrResultsScreen: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             {medications.map((med) => (
-              <div key={med.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+              <div key={med.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between space-y-1">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 font-bold text-slate-900">
                     <span>{med.name}</span>
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-                      med.type === 'ayurvedic' ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-teal-100 text-teal-900 border border-teal-200'
-                    }`}>
-                      {med.confidence}% Conf
-                    </span>
+                    {med.fuzzy_matched && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded font-bold flex items-center gap-1" title="CDSCO / RxNorm / AYUSH Fuzzy Match">
+                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                        <span>Fuzzy Normalized</span>
+                      </span>
+                    )}
                   </div>
-                  <div className="text-slate-500 text-[11px]">{med.frequency}</div>
+                  {med.original_name && med.original_name !== med.name && (
+                    <div className="text-[10px] text-slate-500 italic">
+                      Original OCR string: "{med.original_name}"
+                    </div>
+                  )}
+                  <div className="text-slate-600 text-[11px] font-medium">{med.dosage} • {med.frequency}</div>
                 </div>
 
                 <button

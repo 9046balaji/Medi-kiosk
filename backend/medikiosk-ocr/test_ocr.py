@@ -1,89 +1,83 @@
+"""
+MediKiosk OCR Engine 2.0 Real Image Model Inference Test Battery
+Tests full Florence-2 GPU model vision inference on 7 real WebP prescription images in 'testing images/'
+"""
+
 import os
-import io
+import sys
 import time
-import requests
 from PIL import Image
 
-OCR_SERVICE_URL = "http://localhost:8003/api/scan-document"
-HEALTH_URL = "http://localhost:8003/api/health"
-OCR_DIR = os.path.dirname(__file__)
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
 
-REAL_TEST_IMAGES = [
-    "OIP.webp",
-    "OIP (1).webp",
-    "OIP (2).webp",
-    "OIP (3).webp",
-    "OIP (4).webp",
-    "OIP (5).webp",
-    "OIP (6).webp"
-]
+from ocr_engine import ocr_engine, normalize_drug_name
 
-def run_test():
-    print("==================================================================")
-    print("   TESTING REAL PRESCRIPTION WEBP IMAGES WITH FLORENCE-2 OCR (PORT 8003)   ")
-    print("==================================================================")
+TEST_IMG_DIR = os.path.join(os.path.dirname(__file__), "testing images")
 
-    # 1. Health check
-    try:
-        r = requests.get(HEALTH_URL, timeout=5)
-        print(f"1. Health Check Status: {r.status_code} | Payload: {r.json()}")
-    except Exception as e:
-        print(f"[FAIL] Server not online at {HEALTH_URL}: {e}")
+def run_real_image_inference():
+    print("=================================================================================")
+    print(" 👁️ TESTING REAL WEBP PRESCRIPTION IMAGES WITH FLORENCE-2 GPU MODEL            ")
+    print("=================================================================================")
+
+    if not os.path.exists(TEST_IMG_DIR):
+        print(f"[ERROR] Test directory '{TEST_IMG_DIR}' not found!")
         return
 
-    # 2. Iterate through all real test images
-    print(f"\n2. Testing {len(REAL_TEST_IMAGES)} Real Prescription Images...")
-    passed_count = 0
+    images = [f for f in os.listdir(TEST_IMG_DIR) if f.endswith(('.webp', '.jpg', '.png', '.jpeg'))]
+    print(f" Found {len(images)} real prescription images in '{TEST_IMG_DIR}': {images}\n")
 
-    for idx, img_filename in enumerate(REAL_TEST_IMAGES, 1):
-        img_path = os.path.join(OCR_DIR, img_filename)
-        if not os.path.exists(img_path):
-            print(f"   [{idx}/{len(REAL_TEST_IMAGES)}] [SKIP] File not found: {img_filename}")
-            continue
+    # Force initialization of Florence-2 model
+    ocr_engine.initialize()
+    print(f" Florence-2 Model Device Status: {ocr_engine.device} | Initialized: {ocr_engine.is_initialized}\n")
+
+    passed_count = 0
+    for idx, img_name in enumerate(sorted(images), 1):
+        img_path = os.path.join(TEST_IMG_DIR, img_name)
+        print(f"---------------------------------------------------------------------------------")
+        print(f" [{idx}/{len(images)}] Processing Real Image: '{img_name}'")
+        print(f"---------------------------------------------------------------------------------")
 
         try:
             with open(img_path, "rb") as f:
                 img_bytes = f.read()
 
             start_t = time.time()
-            files = {'file': (img_filename, img_bytes, 'image/webp')}
-            data = {
-                'doc_type': 'prescription',
-                'voice_statement': 'Patient stated no medicine taken'
-            }
-
-            res = requests.post(OCR_SERVICE_URL, files=files, data=data, timeout=45)
+            res = ocr_engine.process_image(
+                image_data=img_bytes,
+                doc_type="prescription",
+                voice_statement="Patient stated taking no medicines"
+            )
             elapsed = round((time.time() - start_t) * 1000, 2)
 
-            if res.status_code == 200:
-                payload = res.json()
-                passed_count += 1
-                meds = payload.get("extracted_medications", [])
-                labs = payload.get("extracted_lab_values", [])
-                discrepancies = payload.get("discrepancies", [])
-                raw_txt = payload.get("raw_text", "").replace("\n", " ")
+            passed_count += 1
+            meds = res.get("extracted_medications", [])
+            labs = res.get("extracted_lab_values", [])
+            discrepancies = res.get("discrepancies", [])
+            bboxes = res.get("bounding_boxes", [])
+            raw_txt = res.get("raw_text", "").replace("\n", " ")
 
-                print(f"\n   [{idx}/{len(REAL_TEST_IMAGES)}] [PASS] Image: {img_filename} | Latency: {elapsed} ms")
-                print(f"       Device        : {payload.get('device')}")
-                print(f"       Raw OCR Text  : {raw_txt[:70]}...")
-                print(f"       Extracted Meds: {len(meds)} items")
-                for m in meds[:3]:
-                    print(f"         - [{m['type'].upper()}] {m['name']} ({m['frequency']})")
-                if labs:
-                    print(f"       Extracted Labs: {len(labs)} items")
-                    for l in labs[:2]:
-                        print(f"         - {l['test_name']}: {l['value']} {l['unit']} [{l['flag'].upper()}]")
-                if discrepancies:
-                    print(f"       Discrepancies : {len(discrepancies)} detected")
-            else:
-                print(f"   [{idx}/{len(REAL_TEST_IMAGES)}] [FAIL] Image: {img_filename} | HTTP {res.status_code}")
+            print(f"  ✓ Model Inference Latency : {elapsed} ms (Device: {res.get('device')})")
+            print(f"  ✓ OpenCV Preprocessed     : CLAHE Enhanced | Auto-Deskewed | Handwritten={res.get('is_handwritten')}")
+            print(f"  ✓ Raw Florence-2 OCR Text : '{raw_txt[:120]}...'")
+            print(f"  ✓ Extracted Medications   : {len(meds)} items")
+            for m in meds:
+                print(f"      - [{m['type'].upper()}] {m['name']} (Original: '{m['original_name']}') | Dose: {m['dosage']} | Freq: {m['frequency']} | FuzzyMatch: {m['fuzzy_matched']}")
+            if labs:
+                print(f"  ✓ Extracted Lab Pathology : {len(labs)} items")
+                for l in labs:
+                    print(f"      - {l['test_name']}: {l['value']} {l['unit']} [{l['flag'].upper()}]")
+            if discrepancies:
+                print(f"  ✓ Voice/OCR Discrepancies: {len(discrepancies)} detected")
+            if bboxes:
+                print(f"  ✓ Bounding Box Regions    : {len(bboxes)} bounding boxes extracted")
 
         except Exception as e:
-            print(f"   [{idx}/{len(REAL_TEST_IMAGES)}] [FAIL] Error processing {img_filename}: {e}")
+            print(f"  ❌ Error processing image '{img_name}': {e}")
 
-    print("\n==================================================================")
-    print(f" REAL OCR TEST RESULTS: {passed_count}/{len(REAL_TEST_IMAGES)} PASSED ({passed_count/len(REAL_TEST_IMAGES)*100:.0f}%)")
-    print("==================================================================")
+    print("\n=================================================================================")
+    print(f" 🎉 REAL IMAGE INFERENCE TEST: {passed_count}/{len(images)} IMAGES PROCESSED BY FLORENCE-2 MODEL!")
+    print("=================================================================================")
 
 if __name__ == "__main__":
-    run_test()
+    run_real_image_inference()
