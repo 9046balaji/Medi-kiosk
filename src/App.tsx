@@ -13,6 +13,8 @@ import { DevLauncher } from './components/common/DevLauncher';
 
 // Kiosk Flow Screens (from kiosk index barrel)
 import {
+  WelcomeAnimationScreen,
+  KioskWelcomePage,
   WelcomeScreen,
   AbhaAuthScreen,
   QrScannerScreen,
@@ -49,20 +51,39 @@ import { SystemSettingsScreen } from './components/settings/system/SystemSetting
 const isKioskRoute = (pathname: string) => {
   return [
     '/',
+    '/intro',
+    '/welcome',
+    '/register',
     '/auth',
     '/auth/scan',
+    '/scan/qr',
     '/auth/returning',
+    '/returning',
     '/intake',
     '/scan',
     '/scan/results',
     '/complete',
-    '/offline'
+    '/offline',
+    '/profile/patient',
+    '/locker',
+    '/settings/patient'
   ].includes(pathname);
 };
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const isKiosk = isKioskRoute(location.pathname);
+
+  if (location.pathname === '/intro') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white select-none">
+        <main className="min-h-screen flex flex-col relative">
+          {children}
+        </main>
+        <DevLauncher />
+      </div>
+    );
+  }
 
   if (isKiosk) {
     return (
@@ -111,16 +132,21 @@ export default function App() {
               {/* Dev Matrix for Judges */}
               <Route path="/dev" element={<DevLauncher />} />
 
-              {/* Kiosk Screens (1A to 3C) */}
+              {/* Kiosk Screens (0A to 3C) */}
               <Route path="/" element={<WelcomeScreen />} />
+              <Route path="/intro" element={<WelcomeAnimationScreen />} />
+              <Route path="/register" element={<WelcomeScreen />} />
               <Route path="/auth" element={<AbhaAuthScreen />} />
               <Route path="/auth/scan" element={<QrScannerScreen />} />
+              <Route path="/scan/qr" element={<QrScannerScreen />} />
               <Route path="/auth/returning" element={<ReturningPatientScreen />} />
+              <Route path="/returning" element={<ReturningPatientScreen />} />
               <Route path="/intake" element={<IntakeScreen />} />
               <Route path="/scan" element={<DocScannerScreen />} />
               <Route path="/scan/results" element={<OcrResultsScreen />} />
               <Route path="/complete" element={<PatientReceiptScreen />} />
               <Route path="/offline" element={<DegradedModeScreen />} />
+              <Route path="/locker" element={<PatientProfileScreen />} />
 
               {/* Clinical Screens (4A to 6A) */}
               <Route path="/nurse" element={<NurseConsoleScreen />} />
