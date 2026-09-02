@@ -36,6 +36,11 @@ import {
   askMedGemmaNextQuestion,
   runEmergencyContextAnalysis,
 } from '../lib/medgemmaApi';
+import {
+  checkAyurParamHealth,
+  synthesizeAyurParamDashavidhaApi,
+  queryAyurParamApi,
+} from '../lib/ayurParamApi';
 import { playNeuralTts } from '../lib/ttsApi';
 import { checkEmergencyTriage } from '../lib/emergencyApi';
 import { translateText } from '../lib/translationApi';
@@ -275,6 +280,10 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isMedGemmaOnline, setIsMedGemmaOnline] = useState<boolean>(false);
   const [medgemmaEndpoint, setMedgemmaEndpoint] = useState<string>('https://unilludedly-pipier-paola.ngrok-free.dev');
 
+  // AyurParam GGUF Colab State
+  const [isAyurParamOnline, setIsAyurParamOnline] = useState<boolean>(false);
+  const [ayurparamEndpoint, setAyurparamEndpoint] = useState<string>('https://doormat-undying-detergent.ngrok-free.dev');
+
   // MedGemma Conversational Brain State
   const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([]);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
@@ -289,6 +298,11 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     checkMedGemmaHealth().then((res) => {
       setIsMedGemmaOnline(res.online);
       if (res.endpoint) setMedgemmaEndpoint(res.endpoint);
+    });
+
+    checkAyurParamHealth().then((res) => {
+      setIsAyurParamOnline(res.online);
+      if (res.endpoint) setAyurparamEndpoint(res.endpoint);
     });
   }, []);
 
@@ -312,6 +326,18 @@ export const MediKioskProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const flags = redFlags.map((rf) => rf.keyword);
     const ocrSummary = extractedEntities.map((e) => `${e.drugName} ${e.dosage} (${e.frequency})`).join('; ');
     const res = await synthesizeClinicalNoteApi(transcript, ocrSummary, flags, mode);
+    if (res.soap) {
+      setSoapDraft({
+        subjective: res.soap.subjective,
+        objective: res.soap.objective,
+        assessment: res.soap.assessment,
+        plan: res.soap.plan
+      });
+    }
+  };
+
+  const handleSynthesizeAyurParamWithAi = async () => {
+    const res = await synthesizeAyurParamDashavidhaApi(transcript, {}, { name: patientName, age: patientAge, gender: patientGender }, language);
     if (res.soap) {
       setSoapDraft({
         subjective: res.soap.subjective,

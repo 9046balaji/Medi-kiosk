@@ -4,6 +4,7 @@ import { useMediKiosk } from '../../../context/MediKioskContext';
 import { T } from '../../../context/TranslationContext';
 import { DrugInteractionMatrix } from '../../common/DrugInteractionMatrix';
 import { coveReasoningApi, exportFhirResourcesApi, CoVeReasoningResult } from '../../../lib/medgemmaApi';
+import { synthesizeAyurParamDashavidhaApi } from '../../../lib/ayurParamApi';
 import { playNeuralTts } from '../../../lib/ttsApi';
 import {
   Stethoscope,
@@ -77,6 +78,34 @@ export const DoctorDashboardScreen: React.FC = () => {
 
   const handlePlayDoctorTts = (text: string) => {
     playNeuralTts(text, state.language);
+  };
+
+  const [isAyurParamSynthesizing, setIsAyurParamSynthesizing] = useState<boolean>(false);
+
+  const handleTriggerAyurParamSynthesis = async () => {
+    setIsAyurParamSynthesizing(true);
+    try {
+      const res = await synthesizeAyurParamDashavidhaApi(
+        state.soapDraft.subjective || state.transcript,
+        {},
+        { name: state.patientName, age: state.patientAge, gender: state.patientGender },
+        state.language
+      );
+      if (res.dashavidha_pariksha) {
+        if (res.dashavidha_pariksha.prakriti) setPrakriti(res.dashavidha_pariksha.prakriti);
+        if (res.dashavidha_pariksha.vikriti) setVikriti(res.dashavidha_pariksha.vikriti);
+        if (res.dashavidha_pariksha.agni) setAgni(res.dashavidha_pariksha.agni);
+        if (res.dashavidha_pariksha.kosta) setKosta(res.dashavidha_pariksha.kosta);
+      }
+      if (res.soap) {
+        if (res.soap.subjective) state.updateSoapDraft('subjective', res.soap.subjective);
+        if (res.soap.objective) state.updateSoapDraft('objective', res.soap.objective);
+        if (res.soap.assessment) state.updateSoapDraft('assessment', res.soap.assessment);
+        if (res.soap.plan) state.updateSoapDraft('plan', res.soap.plan);
+      }
+    } finally {
+      setIsAyurParamSynthesizing(false);
+    }
   };
 
   const handleTriggerSoapSynthesis = async () => {
@@ -199,6 +228,16 @@ export const DoctorDashboardScreen: React.FC = () => {
             >
               <Sparkles className="w-4 h-4 text-amber-300" />
               <span>{isSynthesizing ? 'Synthesizing...' : '🤖 MedGemma SOAP'}</span>
+            </button>
+
+            <button
+              onClick={handleTriggerAyurParamSynthesis}
+              disabled={isAyurParamSynthesizing}
+              className="px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-700/30"
+              title="Synthesize 10-Fold Dashavidha Assessment with AyurParam GGUF"
+            >
+              <Flame className="w-4 h-4 text-amber-300" />
+              <span>{isAyurParamSynthesizing ? 'Synthesizing...' : '🌿 AyurParam Dashavidha'}</span>
             </button>
 
             <button

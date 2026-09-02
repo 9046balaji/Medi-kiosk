@@ -42,6 +42,8 @@ export const PatientMedGemmaTab: React.FC<PatientMedGemmaTabProps> = ({
 }) => {
   const state = useMediKiosk();
 
+  const [aiModel, setAiModel] = React.useState<'medgemma' | 'ayurparam'>('medgemma');
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 w-full">
       {/* Consultation History (7 cols on XL screens) */}
@@ -187,14 +189,32 @@ export const PatientMedGemmaTab: React.FC<PatientMedGemmaTabProps> = ({
                   <Sparkles className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900"><T text="Ask MedGemma AI Assistant" /></h3>
+                  <h3 className="text-base font-black text-slate-900">
+                    {aiModel === 'medgemma' ? <T text="Ask MedGemma AI Assistant" /> : <T text="Ask AyurParam AYUSH AI" />}
+                  </h3>
                   <p className="text-xs text-slate-500 font-medium"><T text="Voice ASR & Neural TTS enabled in all Indian languages." /></p>
                 </div>
               </div>
 
-              <span className="text-xs font-mono font-bold px-2.5 py-1 bg-purple-100 text-purple-900 rounded-full border border-purple-300">
-                ASR + TTS Ready
-              </span>
+              {/* AI Model Toggle Pill */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-300">
+                <button
+                  onClick={() => setAiModel('medgemma')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                    aiModel === 'medgemma' ? 'bg-purple-700 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  MedGemma
+                </button>
+                <button
+                  onClick={() => setAiModel('ayurparam')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                    aiModel === 'ayurparam' ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  🌿 AyurParam
+                </button>
+              </div>
             </div>
 
             {/* Chat Messages */}
