@@ -1,12 +1,21 @@
 # 🌉 MediKiosk Enterprise AI Microservice Gateway Router 2.0
 ### Multi-Model Router, Smart Classification, Circuit Breaker & Automatic Failover
 
-[![Version](https://img.shields.io/badge/Release-v2.0.0-emerald.svg)](https://github.com/balajikonda9046/Medi-kiosk)
+[![Version](https://img.shields.io/badge/Release-v2.1.0-emerald.svg)](https://github.com/balajikonda9046/Medi-kiosk)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Central Intelligent Microservice Gateway Router** running on **Port 8007**.  
 > Multiplexes **Google MedGemma 2.1** and **AYUSH AyurParam GGUF** across Google Colab GPU Ngrok tunnels and local GPU services.  
 > Features **Smart Domain Classification**, **Cross-Model Automatic Failover**, **Circuit Breaker Resilience**, and **Unified Telemetry**.
+
+---
+
+## ☁️ Cloud GPU Model Drive Folders & Colab Notebooks
+
+Access pre-trained model weights and Colab notebook launchers directly on Google Drive:
+
+- 🤖 **Google MedGemma 1.5 / 2.1 PyTorch LLM**: [https://drive.google.com/drive/folders/16uhmYsF8fAhQwwGy3HItju56YzhMKe75?usp=sharing](https://drive.google.com/drive/folders/16uhmYsF8fAhQwwGy3HItju56YzhMKe75?usp=sharing)
+- 🌿 **AYUSH AyurParam GGUF LLM**: [https://drive.google.com/drive/folders/1RQVaJkrjABn6mkZCk0PnomI7ch2zKwfo?usp=sharing](https://drive.google.com/drive/folders/1RQVaJkrjABn6mkZCk0PnomI7ch2zKwfo?usp=sharing)
 
 ---
 
@@ -17,6 +26,7 @@ backend/medikiosk-gateway/
 ├── main.py                     # FastAPI Gateway server — /api/gateway/generate, /api/gateway/health, /ws/gateway-stream
 ├── gateway_router.py           # Core Router — keyword classification, async httpx client, failover circuit breaker
 ├── colab_gateway_server.py     # Colab deployment script launching unified Ngrok gateway
+├── test_e2e_full_flow.py       # Full end-to-end multi-model benchmark verifying live GPU routes
 ├── test_gateway.py             # Enterprise unit test battery verifying telemetry, routing, and failover
 ├── requirements.txt            # Python dependencies
 └── README.md                   # Microservice documentation
@@ -54,18 +64,15 @@ Base URL: `http://localhost:8007`
 
 ## 🧪 Enterprise Unit Test
 
-Run the Gateway test battery:
+Run the full end-to-end benchmark verifying both live Colab GPU servers:
 
 ```bash
-python backend/medikiosk-gateway/test_gateway.py
+python backend/medikiosk-gateway/test_e2e_full_flow.py
 ```
 
 Output:
 ```
 =================================================================================
- 🚀 MEDIKIOSK ENTERPRISE AI MICROSERVICE GATEWAY TEST BATTERY                   
+ 🎉 FULL END-TO-END AI GATEWAY & DUAL COLAB MODEL FLOW VERIFIED WITH 100% SUCCESS!
 =================================================================================
-  ✓ PASS: Unified Gateway Telemetry verified!
-  ✓ PASS: Smart classification engine verified!
-  ✓ PASS: Smart routed generation verified!
 ```

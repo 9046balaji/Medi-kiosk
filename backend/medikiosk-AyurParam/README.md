@@ -1,12 +1,19 @@
-# 🌿 MediKiosk AyurParam GGUF Clinical LLM Microservice 2.0
-### AyurParam GGUF (`ayurparam-q4_k_m.gguf`) — AYUSH & Ayurvedic AI Clinical Intelligence
+# 🌿 MediKiosk AyurParam GGUF AYUSH LLM Microservice
+### Quantized GGUF Q4_K_M Model & Colab GPU Engine
 
 [![Version](https://img.shields.io/badge/Release-v2.0.0-emerald.svg)](https://github.com/balajikonda9046/Medi-kiosk)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **Specialized Ayurvedic AI Microservice** running on **Port 8006** (or via Colab Ngrok GPU proxy).  
-> Powered by `ayurparam-q4_k_m.gguf` via `llama-cpp-python` and FastAPI.  
-> Features **10-Fold Dashavidha Pariksha Matrix**, **Tridosha (Vata/Pitta/Kapha) Imbalance Analysis**, **AYUSH & Allopathic Herb-Drug Interaction Matrix**, **Chain-of-Verification (CoVe) Audit**, and **NRCES-Compliant HL7 FHIR R4 Export**.
+> **AYUSH Clinical Brain** running on **Port 8006** or **Google Colab GPU Ngrok Tunnel**.  
+> Features **10-Fold Dashavidha Pariksha Matrix**, **Tridosha (Vata/Pitta/Kapha) Imbalance Analysis**, **AYUSH & Allopathic Herb-Drug Safety Matrix**, and **HL7 FHIR R4 Bundle Exporter**.
+
+---
+
+## ☁️ Google Drive Model & Colab Notebook Link
+
+Access pre-trained AyurParam GGUF quantized weights (`ayurparam-q4_k_m.gguf`) and Colab Notebook launcher directly on Google Drive:
+
+- 📁 **Google Drive Model Folder & Colab Notebook**: [https://drive.google.com/drive/folders/1RQVaJkrjABn6mkZCk0PnomI7ch2zKwfo?usp=sharing](https://drive.google.com/drive/folders/1RQVaJkrjABn6mkZCk0PnomI7ch2zKwfo?usp=sharing)
 
 ---
 
@@ -14,63 +21,35 @@
 
 ```
 backend/medikiosk-AyurParam/
-├── main.py                     # FastAPI server — SOAP, Tridosha, Herb-Drug, CoVe, FHIR, /ws/intake-stream
-├── ayurparam_engine.py         # AyurParam Engine — GGUF remote proxy, JSON repair parser, Dashavidha matrix
-├── colab_ayurparam_server.py   # Google Colab GPU proxy server script with Ngrok tunnel
-├── test_ayurparam.py           # Enterprise unit test battery verifying live GGUF, Dashavidha, Tridosha
-├── test_5_questions.py         # 5/5 Enterprise AyurParam Clinical Evaluation Question Test Suite
-├── test_stream.py              # WebSocket streaming test
-├── requirements.txt            # Python dependencies
-└── model/
-    └── ayurparam-q4_k_m.gguf   # Local GGUF Q4_K_M model weights (~4.1GB)
+├── main.py                     # FastAPI server — Port 8006 (/generate, /api/soap-synthesis, /api/tridosha-analysis)
+├── ayurparam_engine.py         # GGUF engine wrapper, 10-Fold Dashavidha matrix, Tridosha analyzer, Herb-Drug checker
+├── colab_ayurparam_server.py   # Colab launcher script starting PyNgrok GPU tunnel
+├── test_ayurparam.py           # Unit test battery verifying live GGUF inference
+├── test_5_questions.py         # 5/5 Clinical Evaluation test suite (100% Pass)
+├── requirements.txt            # Dependencies
+└── README.md                   # Documentation
 ```
 
 ---
 
-## 🚀 Key Features & Capabilities
+## 🚀 Running on Google Colab GPU
 
-1. **10-Fold Dashavidha Pariksha Matrix**:
-   - Synthesizes full Ayurvedic patient profiles across *Prakriti*, *Vikriti*, *Agni*, *Kosta*, *Sara*, *Samhanana*, *Pramana*, *Satmya*, *Sattva*, *Ahara Shakti*, *Vyayama Shakti*, and *Vaya*.
-2. **Tridosha Imbalance Analyzer**:
-   - Computes real-time percentage breakdown for Vata, Pitta, and Kapha doshas and prescribes targeted Ahara (Diet), Vihara (Lifestyle), and Aushadhi (Formulations).
-3. **AYUSH & Allopathic Herb-Drug Safety Matrix**:
-   - Cross-checks prescribed medications against known contraindications (e.g. *Aspirin + Guggulu* bleeding risk, *Metformin + Karela* hypoglycemia risk).
-4. **180-Second Async Timeout Resilience**:
-   - Uses non-blocking `httpx.AsyncClient` with 180s timeout resilience for high-load Colab T4/A100 GPU generation.
-5. **NRCES-Compliant HL7 FHIR R4 Bundle Exporter**:
-   - Export clinical notes as FHIR R4 JSON bundles tagged with NAMASTE Ayush and LOINC codings.
+1. Open the Colab notebook from the [Google Drive Folder](https://drive.google.com/drive/folders/1RQVaJkrjABn6mkZCk0PnomI7ch2zKwfo?usp=sharing).
+2. Execute the setup cell:
+```python
+!pip install -q llama-cpp-python pyngrok fastapi uvicorn httpx
+!python colab_ayurparam_server.py --ngrok-token <YOUR_NGROK_AUTHTOKEN>
+```
+3. Copy the generated Ngrok tunnel URL (e.g. `https://doormat-undying-detergent.ngrok-free.dev`) and set `AYURPARAM_REMOTE_URL` in `.env`.
 
 ---
 
-## 📡 API Reference
-
-Base URL: `http://localhost:8006` (or `AYURPARAM_REMOTE_URL` Ngrok proxy)
+## 📡 API Reference (Port 8006)
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/health` | Service health & model load status |
-| `POST` | `/api/generate` | Direct GGUF text generation |
-| `POST` | `/api/soap-synthesis` | **Ayurvedic SOAP & Dashavidha 10-Fold Synthesis** |
-| `POST` | `/api/tridosha-analysis` | **Tridosha Imbalance Analyzer** |
-| `POST` | `/api/herb-drug-check` | **AYUSH & Allopathic Herb-Drug Interaction Matrix** |
-| `POST` | `/api/cove-reasoning` | **Chain-of-Verification 4-Stage Audit** |
-| `POST` | `/api/export-fhir` | **NRCES HL7 FHIR R4 Bundle Exporter** |
-| `POST` | `/api/patient-translation` | **Plain-Language Patient Advice in 22 Languages** |
-| `WS` | `/ws/intake-stream` | **Real-Time Token Streaming Endpoint** |
-
----
-
-## 🧪 Enterprise Unit Test
-
-Run the 5/5 Clinical Evaluation test suite:
-
-```bash
-python backend/medikiosk-AyurParam/test_5_questions.py
-```
-
-Output:
-```
-=================================================================================
- 🎉 ALL 5/5 CLINICAL EVALUATION QUESTIONS PASSED WITH 100% SUCCESS ON GPU!      
-=================================================================================
-```
+| `GET` | `/health` | **Returns GGUF Q4_K_M model status and CUDA memory** |
+| `POST` | `/generate` | Direct GGUF prompt text generation endpoint |
+| `POST` | `/api/soap-synthesis` | **Generates 10-Fold Dashavidha Pariksha assessment JSON** |
+| `POST` | `/api/tridosha-analysis` | **Calculates Vata/Pitta/Kapha percentage breakdown** |
+| `POST` | `/api/herb-drug-check` | Allopathic & AYUSH Herb-Drug interaction safety checker |
